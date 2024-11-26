@@ -6,7 +6,6 @@ import fetch from 'node-fetch';
 
 // Importing interfaces from your type files
 import { SteamOwnedGamesResponse, SteamGame } from '../../../../../types/steam';
-import { GameWithUser } from '../../../../../types/prisma';
 
 const prisma = new PrismaClient();
 const STEAM_API_KEY = process.env.STEAM_API_KEY;
@@ -40,6 +39,9 @@ export async function GET(req: Request) {
   const response = await fetch(verifyUrl, {
     method: 'POST',
     body: params,
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded', 
+    },
   });
 
   const body = await response.text();
@@ -118,7 +120,7 @@ export async function GET(req: Request) {
   const games = gamesData.response.games;
   if (!games || games.length === 0) {
     console.warn(`No games found for Steam ID: ${steamId}`);
-    // Optionally, handle this case as needed
+    
   } else {
     console.log(`Found ${games.length} games for Steam ID: ${steamId}`);
 
@@ -177,5 +179,23 @@ export async function GET(req: Request) {
   redirectUrl.searchParams.set('user', user.id.toString());
 
   console.log(`Redirecting user to: ${redirectUrl.toString()}`);
-  return NextResponse.redirect(redirectUrl.toString());
+
+  // Create a NextResponse redirect
+  const nextResponse = NextResponse.redirect(redirectUrl.toString());
+
+  // -----------------------------
+  // Add Cookie to Save Steam ID
+  // -----------------------------
+
+  nextResponse.cookies.set('steamid', steamId, {
+    httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
+    secure: process.env.NODE_ENV === 'production', // Ensures the cookie is sent over HTTPS in production
+    sameSite: 'lax', // Helps protect against CSRF attacks
+    path: '/', // Makes the cookie accessible on all routes
+    maxAge: 60 * 60 * 24 * 7, // 1 week in seconds
+  });
+
+  console.log(`Set 'steamid' cookie and redirecting to: ${redirectUrl.toString()}`);
+
+  return nextResponse;
 }
