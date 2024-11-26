@@ -40,7 +40,7 @@ export async function GET(req: Request) {
     method: 'POST',
     body: params,
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded', // Added header for proper content type
+      'Content-Type': 'application/x-www-form-urlencoded', 
     },
   });
 
@@ -120,7 +120,7 @@ export async function GET(req: Request) {
   const games = gamesData.response.games;
   if (!games || games.length === 0) {
     console.warn(`No games found for Steam ID: ${steamId}`);
-    // Optionally, handle this case as needed
+    
   } else {
     console.log(`Found ${games.length} games for Steam ID: ${steamId}`);
 

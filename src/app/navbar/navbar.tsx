@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ComputerIcon as SteamIcon } from "lucide-react";
 import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Avatar } from "@nextui-org/react";
-import { useFetchUserProfile } from "./hooks/useFetchUserProfile"; // Adjust the import path as needed
+import { useFetchUserProfile } from "./hooks/useFetchUserProfile"; 
 import Image from "next/image";
 import { useState } from "react";
 
@@ -16,7 +16,7 @@ export default function Navbar() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleSteamLogin = () => {
-    router.push("/api/auth/steam-login"); // Ensure this endpoint is correctly implemented
+    router.push("/api/auth/steam-login");
   };
 
   const handleSteamLogout = async () => {
@@ -24,7 +24,7 @@ export default function Navbar() {
     try {
       // Use window.location.href to perform a full page reload after logout
       window.location.href = "/api/auth/steam-logout";
-      // Alternatively, if you prefer not to reload, you can use router.replace and then refetch
+      
       // await router.replace("/api/auth/steam-logout");
       // await refetch();
     } catch (error) {
@@ -41,11 +41,11 @@ export default function Navbar() {
         <div className="flex items-center space-x-2">
           <div className="w-8 h-8 relative">
             <Image
-              src="/placeholder.svg" // Ensure this path is correct and the image exists in the public folder
+              src="/placeholder.svg" 
               alt="GMLNK Logo"
-              fill // Updated from 'layout="fill"' to 'fill' as per Next.js Image component
-              style={{ objectFit: "contain" }} // Updated from 'objectFit' prop
-              priority // Optional: Loads the image with high priority
+              fill 
+              style={{ objectFit: "contain" }} 
+              priority 
             />
           </div>
           <Link href="/" className="text-xl font-bold text-white">
@@ -94,12 +94,12 @@ export default function Navbar() {
                 <DropdownItem key="settings">
                   <Link href="/settings">My Settings</Link>
                 </DropdownItem>
-                {/* Add more DropdownItems as needed */}
+                {/* Add more DropdownItems */}
                 <DropdownItem
                   key="logout"
                   color="danger"
-                  as="button" // Changed from 'a' to 'button'
-                  onClick={handleSteamLogout} // Use onClick to trigger logout
+                  as="button" 
+                  onClick={handleSteamLogout} 
                   className="w-full text-left flex items-center justify-between"
                   //
                 >
