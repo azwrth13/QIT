@@ -1,10 +1,8 @@
 // app/api/games/route.ts
 
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-import { cookies } from 'next/headers'; // Ensure correct import
-
-const prisma = new PrismaClient();
+import { cookies } from 'next/headers';
+import prisma from '../../library/prisma';
 
 export async function GET(req: Request) {
   try {

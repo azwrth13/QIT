@@ -1,24 +1,12 @@
-// app/api/auth/user-profile/route.ts
+// app/api/user/profile/route.ts
 
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client'; // Assuming you're using Prisma
 import { cookies } from 'next/headers';
 import fetch from 'node-fetch';
+import prisma from '../../library/prisma';
+import { SteamProfileResponse } from '../../../types/api';
 
-const prisma = new PrismaClient();
 const STEAM_API_KEY = process.env.STEAM_API_KEY;
-
-// Interface for the Steam Profile API response
-interface SteamProfileResponse {
-  response: {
-    players: {
-      steamid: string;
-      profileurl: string;
-      avatarfull: string;
-      personaname: string;
-    }[];
-  };
-}
 
 export async function GET() {
   try {
