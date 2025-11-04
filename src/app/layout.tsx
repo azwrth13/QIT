@@ -1,27 +1,27 @@
-`use client`;
 import Navbar from "./navbar/navbar";
 import './globals.css';
-import { NextUIProvider } from '@nextui-org/react';
+import { Providers } from './providers';
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export const metadata = {
+  title: 'QIT - Steam Game Library',
+  description: 'Explore and manage your Steam game library',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="bg-[#1b2838] text-white">
-        
-        <NextUIProvider>
+      <body className="bg-[#FFFEF7] text-black min-h-screen flex flex-col">
+        <Providers>
           <Navbar />
-          {children}
-        </NextUIProvider>
-        <footer className="border-t border-[#2a475e] py-4 mt-auto">
-          <div className="container mx-auto px-4 text-center text-sm text-gray-400">
-            <p>© 2024 GMLNK. All rights reserved.</p>
-            <div className="flex justify-center space-x-4 mt-2">
-              <a href="/privacy" className="hover:text-white">Privacy Policy</a>
-              <a href="/terms" className="hover:text-white">Terms of Service</a>
-              <a href="/contact" className="hover:text-white">Contact Us</a>
+          <main className="flex-1">
+            {children}
+          </main>
+          <footer className="border-t-4 border-black py-6 mt-12 bg-neobrutal-yellow">
+            <div className="container mx-auto px-4 text-center">
+              <p className="text-sm font-bold">© 2024 Qit. All rights reserved.</p>
             </div>
-          </div>
-        </footer>
+          </footer>
+        </Providers>
       </body>
     </html>
   );

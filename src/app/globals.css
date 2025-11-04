@@ -2,20 +2,181 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;700;900&display=swap');
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #FFFEF7;
+  --foreground: #000000;
+  --neobrutal-yellow: #FFE66D;
+  --neobrutal-pink: #FF6B6B;
+  --neobrutal-blue: #4ECDC4;
+  --neobrutal-green: #95E1D3;
+  --neobrutal-purple: #A8E6CF;
+  --neobrutal-border: #000000;
+  --neobrutal-shadow: 4px 4px 0px 0px #000000;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Neobrutalism utility classes */
+.neobrutal-border {
+  border: 4px solid var(--neobrutal-border);
+}
+
+.neobrutal-shadow {
+  box-shadow: var(--neobrutal-shadow);
+}
+
+.neobrutal-shadow-sm {
+  box-shadow: 2px 2px 0px 0px var(--neobrutal-border);
+}
+
+.neobrutal-shadow-lg {
+  box-shadow: 6px 6px 0px 0px var(--neobrutal-border);
+}
+
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+/* Custom scrollbar - neobrutalism style */
+::-webkit-scrollbar {
+  width: 16px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+  border: 2px solid var(--neobrutal-border);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--neobrutal-yellow);
+  border: 2px solid var(--neobrutal-border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neobrutal-pink);
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Focus styles - neobrutalism */
+*:focus-visible {
+  outline: 4px solid var(--neobrutal-border);
+  outline-offset: 2px;
+}
+
+/* Pixelated font for headings */
+.pixel-font {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+}
+
+/* Browser window styling */
+.browser-window {
+  border: 4px solid var(--neobrutal-border);
+  box-shadow: var(--neobrutal-shadow);
+  background: var(--background);
+}
+
+.browser-title-bar {
+  background: var(--neobrutal-yellow);
+  border-bottom: 4px solid var(--neobrutal-border);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 900;
+  font-size: 0.875rem;
+}
+
+.browser-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.browser-control {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--neobrutal-border);
+  border-radius: 0;
+  background: var(--neobrutal-pink);
+}
+
+.browser-control.close {
+  background: var(--neobrutal-pink);
+}
+
+.browser-control.minimize {
+  background: var(--neobrutal-yellow);
+}
+
+.browser-control.maximize {
+  background: var(--neobrutal-green);
+}
+
+/* Neobrutal select dropdown styling */
+.neobrutal-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23000000' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 12px;
+  padding-right: 40px;
+  cursor: pointer;
+}
+
+.neobrutal-select:focus {
+  background-color: var(--neobrutal-yellow);
+  outline: none;
+}
+
+.neobrutal-select:hover {
+  background-color: var(--neobrutal-yellow);
+}
+
+.neobrutal-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Ensure select options are styled properly */
+.neobrutal-select option {
+  background-color: white;
+  color: black;
+  font-weight: bold;
+  padding: 8px;
+}
+
+/* NextUI Dropdown Menu - Neobrutal styling */
+[data-slot="base"] {
+  background-color: white !important;
+  border: 4px solid var(--neobrutal-border) !important;
+  box-shadow: var(--neobrutal-shadow) !important;
+  border-radius: 0 !important;
+}
+
+[data-slot="base"] [data-slot="base"] {
+  background-color: white !important;
+}
+
+[data-hover="true"] {
+  background-color: var(--neobrutal-yellow) !important;
+}
+
+[data-focus="true"] {
+  background-color: var(--neobrutal-yellow) !important;
 }
