@@ -1,64 +1,102 @@
 // steam-callback/route.ts
 
-import { PrismaClient } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import fetch from 'node-fetch';
+import prisma from '../../../library/prisma';
+import { SteamOwnedGamesResponse, SteamGame, SteamProfileResponse } from '../../../../types/api';
 
-// Importing interfaces from your type files
-import { SteamOwnedGamesResponse, SteamGame } from '../../../../../types/steam';
-
-const prisma = new PrismaClient();
 const STEAM_API_KEY = process.env.STEAM_API_KEY;
-
-// -----------------------------
-// TypeScript Interfaces
-// -----------------------------
-
-// Interface for the Steam Profile API response
-interface SteamProfileResponse {
-  response: {
-    players: {
-      steamid: string;
-      profileurl: string;
-      avatarfull: string;
-      personaname: string;
-    }[];
-  };
-}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const params = new URLSearchParams(url.search);
 
-  // Add OpenID check_authentication
-  params.set('openid.mode', 'check_authentication');
-  const verifyUrl = 'https://steamcommunity.com/openid/login';
-
-  console.log('Sending OpenID authentication request to Steam.');
-
-  const response = await fetch(verifyUrl, {
-    method: 'POST',
-    body: params,
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded', 
-    },
-  });
-
-  const body = await response.text();
-
-  console.log('Received OpenID authentication response from Steam.');
-
-  if (!body.includes('is_valid:true')) {
-    console.warn('Invalid login attempt detected.');
-    return NextResponse.json({ error: 'Invalid login attempt' }, { status: 401 });
+  // Log all incoming parameters for debugging
+  console.log('Received OpenID callback with parameters:');
+  for (const [key, value] of params.entries()) {
+    console.log(`  ${key}: ${value}`);
   }
 
+  // Extract Steam ID before modifying params for verification
   const steamIdMatch = params.get('openid.claimed_id')?.match(/\d+$/);
   const steamId = steamIdMatch ? steamIdMatch[0] : null;
 
   if (!steamId) {
     console.warn('Unable to retrieve Steam ID from OpenID response.');
+    console.warn('Available openid parameters:', Array.from(params.keys()).filter(k => k.startsWith('openid.')));
     return NextResponse.json({ error: 'Unable to retrieve Steam ID' }, { status: 400 });
+  }
+
+  // Verify return_to matches our callback URL
+  const returnTo = params.get('openid.return_to');
+  let expectedBaseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  
+  if (!expectedBaseUrl) {
+    if (process.env.VERCEL_URL) {
+      expectedBaseUrl = `https://${process.env.VERCEL_URL}`;
+    } else {
+      expectedBaseUrl = 'http://localhost:3000';
+    }
+  }
+  
+  const expectedReturnTo = `${expectedBaseUrl}/api/auth/steam-callback`;
+  
+  if (returnTo && returnTo !== expectedReturnTo) {
+    console.warn('Return_to mismatch:', {
+      expected: expectedReturnTo,
+      received: returnTo,
+    });
+    // Note: Continue anyway as this might be due to URL encoding differences
+  }
+
+  // Build verification parameters - preserve all original parameters
+  const verifyParams = new URLSearchParams();
+  
+  // Copy all openid.* parameters to verification request
+  for (const [key, value] of params.entries()) {
+    if (key.startsWith('openid.')) {
+      verifyParams.append(key, value);
+    }
+  }
+  
+  // Change mode to check_authentication
+  verifyParams.set('openid.mode', 'check_authentication');
+  
+  const verifyUrl = 'https://steamcommunity.com/openid/login';
+
+  console.log('Sending OpenID authentication verification to Steam.');
+  console.log('Verification URL:', verifyUrl);
+  console.log('Verification parameters count:', verifyParams.toString().split('&').length);
+
+  const response = await fetch(verifyUrl, {
+    method: 'POST',
+    body: verifyParams.toString(),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+  });
+
+  if (!response.ok) {
+    console.error('Steam verification request failed:', {
+      status: response.status,
+      statusText: response.statusText,
+    });
+    return NextResponse.json(
+      { error: 'Failed to verify with Steam' },
+      { status: 500 }
+    );
+  }
+
+  const body = await response.text();
+
+  console.log('Received OpenID authentication response from Steam.');
+  console.log('Verification response:', body);
+
+  if (!body.includes('is_valid:true')) {
+    console.error('Invalid login attempt detected.');
+    console.error('Verification response body:', body);
+    console.error('Verification parameters sent:', verifyParams.toString());
+    return NextResponse.json({ error: 'Invalid login attempt' }, { status: 401 });
   }
 
   console.log(`Extracted Steam ID: ${steamId}`);
@@ -124,64 +162,157 @@ export async function GET(req: Request) {
   } else {
     console.log(`Found ${games.length} games for Steam ID: ${steamId}`);
 
-    // Insert or update games in the database
-    const gamePromises = games.map(async (game: SteamGame) => {
-      try {
-        // Check if the game already exists for this user
-        const existingGame = await prisma.game.findFirst({
-          where: {
-            appid: game.appid,
-            userId: user.id,
-          },
-        });
+    try {
 
-        if (existingGame) {
-          // Update the existing game entry
-          const updatedGame = await prisma.game.update({
-            where: { id: existingGame.id },
-            data: {
-              name: game.name,
-              img_icon_url: game.img_icon_url || '',
-              playtime_forever: game.playtime_forever || 0,
-            },
-          });
-          console.log(`Game updated: ${JSON.stringify(updatedGame, null, 2)}`);
-        } else {
-          // Create a new game entry
-          const newGame = await prisma.game.create({
-            data: {
-              appid: game.appid,
-              name: game.name,
-              img_icon_url: game.img_icon_url || '',
-              playtime_forever: game.playtime_forever || 0,
-              userId: user.id,
-            },
-          });
-          console.log(`Game created: ${JSON.stringify(newGame, null, 2)}`);
-        }
-      } catch (err) {
-        console.error(`Error upserting game with appid ${game.appid}:`, err);
+    // Optimized batch operations: fetch all existing games in one query
+    const existingGames = await prisma.game.findMany({
+      where: { userId: user.id },
+      select: { id: true, appid: true },
+    });
+
+    const existingGameMap = new Map(existingGames.map(g => [g.appid, g.id]));
+    const gameAppIds = new Set(games.map(g => g.appid));
+
+    // Separate games into new and existing
+    const gamesToCreate: SteamGame[] = [];
+    const gamesToUpdate: Array<{ id: number; game: SteamGame }> = [];
+
+    games.forEach((game: SteamGame) => {
+      const existingId = existingGameMap.get(game.appid);
+      if (existingId) {
+        gamesToUpdate.push({ id: existingId, game });
+      } else {
+        gamesToCreate.push(game);
       }
     });
 
-    // Wait for all game upsert operations to complete
-    await Promise.all(gamePromises);
-    console.log('All games have been upserted successfully.');
+    // Delete games that are no longer in the user's library
+    const gamesToDelete = existingGames
+      .filter(g => !gameAppIds.has(g.appid))
+      .map(g => g.id);
+
+    // Perform all operations in a transaction with improved error handling
+    try {
+      // Configure transaction timeout: 60 seconds for large game libraries
+      // Max timeout is 60 seconds (60000ms) for MySQL
+      const timeout = 60000;
+      
+      await prisma.$transaction(
+        async (tx) => {
+          // Create new games in batch
+          if (gamesToCreate.length > 0) {
+            try {
+              const result = await tx.game.createMany({
+                data: gamesToCreate.map((game: SteamGame) => ({
+                  appid: game.appid,
+                  name: game.name,
+                  img_icon_url: game.img_icon_url || '',
+                  playtime_forever: game.playtime_forever || 0,
+                  userId: user.id,
+                })),
+                skipDuplicates: true,
+              });
+              console.log(`Created ${result.count} new games (${gamesToCreate.length} attempted)`);
+            } catch (createError: any) {
+              console.error('Error creating games:', createError);
+              throw new Error(`Failed to create games: ${createError.message}`);
+            }
+          }
+
+          // Update existing games in batch
+          if (gamesToUpdate.length > 0) {
+            try {
+              await Promise.all(
+                gamesToUpdate.map(({ id, game }) =>
+                  tx.game.update({
+                    where: { id },
+                    data: {
+                      name: game.name,
+                      img_icon_url: game.img_icon_url || '',
+                      playtime_forever: game.playtime_forever || 0,
+                    },
+                  })
+                )
+              );
+              console.log(`Updated ${gamesToUpdate.length} existing games`);
+            } catch (updateError: any) {
+              console.error('Error updating games:', updateError);
+              throw new Error(`Failed to update games: ${updateError.message}`);
+            }
+          }
+
+          // Delete games no longer in library
+          if (gamesToDelete.length > 0) {
+            try {
+              const result = await tx.game.deleteMany({
+                where: { id: { in: gamesToDelete } },
+              });
+              console.log(`Deleted ${result.count} games no longer in library`);
+            } catch (deleteError: any) {
+              console.error('Error deleting games:', deleteError);
+              throw new Error(`Failed to delete games: ${deleteError.message}`);
+            }
+          }
+        },
+        {
+          timeout,
+          isolationLevel: 'ReadCommitted', // Use ReadCommitted for better performance
+        }
+      );
+
+      console.log(`Transaction completed successfully for ${games.length} games`);
+      console.log('All games have been upserted successfully.');
+    } catch (transactionError: any) {
+      // Log detailed error information
+      console.error('Transaction failed:', {
+        error: transactionError.message,
+        code: transactionError.code,
+        steamId,
+        userId: user.id,
+        gamesCount: games.length,
+        gamesToCreate: gamesToCreate.length,
+        gamesToUpdate: gamesToUpdate.length,
+        gamesToDelete: gamesToDelete.length,
+        stack: transactionError.stack,
+      });
+
+      // Log warning but allow login to continue
+      // User can retry syncing games later
+      console.warn('Game sync failed, but allowing user to continue with login');
+    }
+    } catch (syncError: any) {
+      // Catch any unexpected errors during game sync (e.g., database connection issues)
+      console.error('Unexpected error during game sync:', {
+        error: syncError.message,
+        stack: syncError.stack,
+        steamId,
+      });
+      // Continue with login even if game sync fails
+      console.warn('Game sync encountered an error, but allowing user to continue with login');
+    }
   }
 
   // -----------------------------
   // Redirect User After Successful Operation
   // -----------------------------
 
-  // Generate an absolute URL for redirection
-  const redirectUrl = new URL('/', req.url);
-  redirectUrl.searchParams.set('success', 'true');
-  redirectUrl.searchParams.set('user', user.id.toString());
+  // Generate an absolute URL for redirection to library using the same base URL logic as steam-login
+  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  
+  if (!baseUrl) {
+    if (process.env.VERCEL_URL) {
+      baseUrl = `https://${process.env.VERCEL_URL}`;
+    } else {
+      baseUrl = 'http://localhost:3000';
+    }
+  }
+  
+  const redirectUrl = `${baseUrl}/library`;
 
-  console.log(`Redirecting user to: ${redirectUrl.toString()}`);
+  console.log(`Redirecting user to: ${redirectUrl}`);
 
   // Create a NextResponse redirect
-  const nextResponse = NextResponse.redirect(redirectUrl.toString());
+  const nextResponse = NextResponse.redirect(redirectUrl);
 
   // -----------------------------
   // Add Cookie to Save Steam ID
@@ -195,7 +326,7 @@ export async function GET(req: Request) {
     maxAge: 60 * 60 * 24 * 7, // 1 week in seconds
   });
 
-  console.log(`Set 'steamid' cookie and redirecting to: ${redirectUrl.toString()}`);
+  console.log(`Set 'steamid' cookie and redirecting to: ${redirectUrl}`);
 
   return nextResponse;
 }

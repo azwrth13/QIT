@@ -24,4 +24,6 @@ model Game {
   playtime_forever Int
   userId          Int
   user            User    @relation(fields: [userId], references: [id])
+
+  @@unique([appid, userId])
 }
