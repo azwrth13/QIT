@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { ComputerIcon as SteamIcon } from "lucide-react";
 import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Avatar } from "@nextui-org/react";
 import { useFetchUserProfile } from "./hooks/useFetchUserProfile"; 
-import Image from "next/image";
 import { useState } from "react";
 
 export default function Navbar() {
@@ -35,42 +34,30 @@ export default function Navbar() {
   };
 
   return (
-    <header className="bg-[#1b2838] border-b border-[#2a475e]">
+    <header className="bg-neobrutal-yellow border-b-4 border-black sticky top-0 z-50">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo and Branding */}
         <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 relative">
-            <Image
-              src="/placeholder.svg" 
-              alt="GMLNK Logo"
-              fill 
-              style={{ objectFit: "contain" }} 
-              priority 
-            />
-          </div>
-          <Link href="/" className="text-xl font-bold text-white">
-            GMLNK
+          <Link href="/" className="text-xl font-pixel font-bold text-black">
+            QIT
           </Link>
         </div>
 
         {/* Navigation Links */}
         <nav className="flex items-center space-x-6">
-          <Link href="/" className="hover:text-blue-400 transition-colors">
+          <Link href="/" className="font-bold text-black hover:text-neobrutal-pink transition-colors">
             Home
           </Link>
-          <Link href="/library" className="hover:text-blue-400 transition-colors">
+          <Link href="/library" className="font-bold text-black hover:text-neobrutal-pink transition-colors">
             Library
-          </Link>
-          <Link href="/friends" className="hover:text-blue-400 transition-colors">
-            Friends
-          </Link>
-          <Link href="/settings" className="hover:text-blue-400 transition-colors">
-            Settings
           </Link>
 
           {/* Authentication Controls */}
           {loading ? (
-            <div className="text-gray-400">Loading...</div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-neobrutal-blue border-4 border-black animate-pulse" />
+              <span className="text-black text-sm font-bold">Loading...</span>
+            </div>
           ) : profile ? (
             // User is authenticated: Show Profile Dropdown
             <Dropdown placement="bottom-end">
@@ -84,24 +71,29 @@ export default function Navbar() {
                   className="transition-transform"
                 />
               </DropdownTrigger>
-              <DropdownMenu aria-label="Profile Actions" variant="flat">
-                <DropdownItem key="profile" className="h-14 gap-2">
+              <DropdownMenu 
+                aria-label="Profile Actions" 
+                className="bg-white border-4 border-black shadow-neobrutal"
+                itemClasses={{
+                  base: "data-[hover=true]:bg-neobrutal-yellow",
+                }}
+              >
+                <DropdownItem 
+                  key="profile" 
+                  className="h-14 gap-2 bg-white data-[hover=true]:bg-neobrutal-yellow"
+                  textValue="Profile"
+                >
                   <div className="flex flex-col">
-                    <p className="font-semibold">Signed in as</p>
-                    <p className="font-semibold">{profile.personaName}</p>
+                    <p className="font-bold text-black">Signed in as</p>
+                    <p className="font-bold text-black">{profile.personaName}</p>
                   </div>
                 </DropdownItem>
-                <DropdownItem key="settings">
-                  <Link href="/settings">My Settings</Link>
-                </DropdownItem>
-                {/* Add more DropdownItems */}
                 <DropdownItem
                   key="logout"
-                  color="danger"
                   as="button" 
                   onClick={handleSteamLogout} 
-                  className="w-full text-left flex items-center justify-between"
-                  //
+                  className="w-full text-left flex items-center justify-between bg-white data-[hover=true]:bg-neobrutal-pink font-bold text-black"
+                  textValue="Logout"
                 >
                   {isLoggingOut ? "Logging out..." : "Log Out"}
                 </DropdownItem>
@@ -112,16 +104,16 @@ export default function Navbar() {
             <>
               {/* Optionally display error message related to authentication */}
               {error && error !== "Not authenticated. Steam ID is missing." && (
-                <div className="text-red-500 mr-4">
+                <div className="text-neobrutal-pink mr-4 font-bold">
                   {`Error: ${error}`}
                 </div>
               )}
               <button
                 onClick={handleSteamLogin}
-                className="flex items-center space-x-2 hover:text-blue-400 transition-colors"
+                className="flex items-center space-x-2 bg-neobrutal-blue border-4 border-black shadow-neobrutal px-4 py-2 font-bold text-black hover:bg-neobrutal-green transition-colors"
               >
                 <SteamIcon className="w-6 h-6" />
-                <span className="text-white">Sign In with Steam</span>
+                <span>Sign In with Steam</span>
               </button>
             </>
           )}
