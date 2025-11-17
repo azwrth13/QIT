@@ -55,6 +55,57 @@ export default function Home() {
           <h1 className="text-5xl font-pixel font-bold text-black mb-4">QIT</h1>
         </div>
 
+        {/* Description Section */}
+        <div className="mb-8 space-y-4">
+          {/* Main Tagline */}
+          <div className="bg-neobrutal-yellow border-4 border-black shadow-neobrutal p-6">
+            <p className="text-black font-bold text-lg leading-relaxed">
+              Discover new games you already own. This Steam game randomizer instantly selects a title from your library so you never waste time deciding what to play.
+            </p>
+          </div>
+
+          {/* Why use it & What you get */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Why use it */}
+            <div className="bg-neobrutal-blue border-4 border-black shadow-neobrutal p-6">
+              <h2 className="text-black font-bold text-xl mb-4">Why use it:</h2>
+              <ul className="space-y-3">
+                <li className="text-black font-bold flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>Eliminates decision fatigue when your backlog feels overwhelming.</span>
+                </li>
+                <li className="text-black font-bold flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>Helps you rediscover hidden gems you forgot you had.</span>
+                </li>
+                <li className="text-black font-bold flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>Makes choosing your next game fast, fun, and effortless.</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* What you get */}
+            <div className="bg-neobrutal-green border-4 border-black shadow-neobrutal p-6">
+              <h2 className="text-black font-bold text-xl mb-4">What you get:</h2>
+              <ul className="space-y-3">
+                <li className="text-black font-bold flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>Quick random picks from your Steam library</span>
+                </li>
+                <li className="text-black font-bold flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>Fresh gaming experiences without buying anything new</span>
+                </li>
+                <li className="text-black font-bold flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>A simple way to enjoy more of the games you already own</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <BrowserWindow title="STEAM PROFILE SEARCH">
           {/* Search Form */}
           <form onSubmit={handleSearch} className="mb-6">
@@ -124,7 +175,7 @@ export default function Home() {
 
           {/* Info Section */}
           {!profile && !loading && !error && (
-            <div className="mt-8 text-center">
+            <div className="mt-8 space-y-4">
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <div className="bg-neobrutal-green border-4 border-black shadow-neobrutal p-4 max-w-xs">
                   <h4 className="font-bold text-black mb-2">Search Profiles</h4>
@@ -132,10 +183,53 @@ export default function Home() {
                     Enter a Steam ID or profile URL
                   </p>
                 </div>
-                <div className="bg-neobrutal-purple border-4 border-black shadow-neobrutal p-4 max-w-xs">
-                  <h4 className="font-bold text-black mb-2">Sign In</h4>
-                  <p className="text-sm text-black font-bold">
-                    Connect your Steam account
+              </div>
+              
+              {/* Enhanced Sign In with Cost Information */}
+              <div className="bg-neobrutal-purple border-4 border-black shadow-neobrutal p-6 max-w-2xl mx-auto">
+                <h4 className="font-bold text-black text-xl mb-4">Sign In with Steam</h4>
+                <p className="text-sm text-black font-bold mb-4">
+                  Connect your Steam account to access your game library and start randomizing!
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                  {/* Monetary Cost */}
+                  <div className="bg-white border-2 border-black p-3">
+                    <h5 className="font-bold text-black text-sm mb-1">💰 Cost</h5>
+                    <p className="text-xs text-black font-bold">
+                      <strong>100% FREE</strong> - No fees, subscriptions, or hidden costs
+                    </p>
+                  </div>
+                  
+                  {/* Time Cost */}
+                  <div className="bg-white border-2 border-black p-3">
+                    <h5 className="font-bold text-black text-sm mb-1">⏱️ Time</h5>
+                    <p className="text-xs text-black font-bold">
+                      <strong>~30 seconds</strong> - Quick Steam sign-in, instant library access
+                    </p>
+                  </div>
+                  
+                  {/* Privacy */}
+                  <div className="bg-white border-2 border-black p-3">
+                    <h5 className="font-bold text-black text-sm mb-1">🔒 Privacy</h5>
+                    <p className="text-xs text-black font-bold">
+                      <strong>Secure OpenID</strong> - Only public profile & game library accessed
+                    </p>
+                  </div>
+                  
+                  {/* Cognitive Load */}
+                  <div className="bg-white border-2 border-black p-3">
+                    <h5 className="font-bold text-black text-sm mb-1">🧠 Easy to Use</h5>
+                    <p className="text-xs text-black font-bold">
+                      <strong>Simple</strong> - Just sign in, filter, and randomize
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="mt-4 pt-3 border-t-2 border-black">
+                  <p className="text-xs text-black font-bold">
+                    <strong>What we access:</strong> Your public Steam profile (username, avatar) and game library. 
+                    We do NOT access messages, friends list, payment info, or any private data.
                   </p>
                 </div>
               </div>

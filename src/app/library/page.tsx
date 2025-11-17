@@ -1,14 +1,17 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { Info } from 'lucide-react';
 import { useFetchGames, Game } from "./hooks/useFetchGames";
 import GameList from "./components/GamesList";
 import RandomGamePicker from "./components/RandomGamePicker";
 import LoadingSkeleton from "./components/LoadingSkeleton";
 import BrowserWindow from "../components/BrowserWindow";
+import HelpPopout from "./components/HelpPopout";
 
 export default function Library() {
   const { games, loading, error } = useFetchGames();
   const [filteredGames, setFilteredGames] = useState<Game[]>([]);
+  const [showHelp, setShowHelp] = useState(false);
 
   // Initialize filteredGames when games are loaded
   useEffect(() => {
@@ -17,8 +20,40 @@ export default function Library() {
     }
   }, [games, filteredGames.length]);
 
+  // Show help popout automatically on first visit (when games are loaded)
+  useEffect(() => {
+    if (!loading && !error && games.length > 0) {
+      const helpShown = localStorage.getItem('qit-help-shown');
+      if (!helpShown) {
+        setShowHelp(true);
+      }
+    }
+  }, [loading, error, games.length]);
+
+  const handleCloseHelp = () => {
+    setShowHelp(false);
+    localStorage.setItem('qit-help-shown', 'true');
+  };
+
+  const handleOpenHelp = () => {
+    setShowHelp(true);
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Help Popout */}
+      <HelpPopout isOpen={showHelp} onClose={handleCloseHelp} />
+
+      {/* Info Button */}
+      <button
+        onClick={handleOpenHelp}
+        className="fixed top-20 right-4 z-40 w-12 h-12 bg-neobrutal-blue hover:bg-neobrutal-green border-4 border-black shadow-neobrutal flex items-center justify-center transition-colors"
+        title="Show Help"
+        aria-label="Show Help"
+      >
+        <Info className="w-6 h-6 text-black" />
+      </button>
+
       {/* Header Section */}
       <BrowserWindow title="WELCOME TO QIT" className="mb-8">
         <h1 className="text-3xl font-pixel font-bold mb-2 text-black">Welcome to QIT</h1>
