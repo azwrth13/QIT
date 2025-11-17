@@ -8,17 +8,24 @@ import { ComputerIcon as SteamIcon } from "lucide-react";
 import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Avatar } from "@nextui-org/react";
 import { useFetchUserProfile } from "./hooks/useFetchUserProfile"; 
 import { useState } from "react";
+import LogoutConfirmModal from "./components/LogoutConfirmModal";
 
 export default function Navbar() {
   const router = useRouter();
   const { profile, loading, error } = useFetchUserProfile();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handleSteamLogin = () => {
     router.push("/api/auth/steam-login");
   };
 
+  const handleLogoutClick = () => {
+    setShowLogoutConfirm(true);
+  };
+
   const handleSteamLogout = async () => {
+    setShowLogoutConfirm(false);
     setIsLoggingOut(true);
     try {
       // Use window.location.href to perform a full page reload after logout
@@ -34,8 +41,15 @@ export default function Navbar() {
   };
 
   return (
-    <header className="bg-neobrutal-yellow border-b-4 border-black sticky top-0 z-50">
-      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+    <>
+      <LogoutConfirmModal
+        isOpen={showLogoutConfirm}
+        onConfirm={handleSteamLogout}
+        onCancel={() => setShowLogoutConfirm(false)}
+        userName={profile?.personaName}
+      />
+      <header className="bg-neobrutal-yellow border-b-4 border-black sticky top-0 z-50">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo and Branding */}
         <div className="flex items-center space-x-2">
           <Link href="/" className="text-xl font-pixel font-bold text-black">
@@ -73,26 +87,27 @@ export default function Navbar() {
               </DropdownTrigger>
               <DropdownMenu 
                 aria-label="Profile Actions" 
-                className="bg-white border-4 border-black shadow-neobrutal"
+                className="bg-white border-4 border-black shadow-neobrutal p-2"
                 itemClasses={{
-                  base: "data-[hover=true]:bg-neobrutal-yellow",
+                  base: "data-[hover=true]:bg-neobrutal-yellow rounded-none",
                 }}
               >
                 <DropdownItem 
                   key="profile" 
-                  className="h-14 gap-2 bg-white data-[hover=true]:bg-neobrutal-yellow"
+                  className="h-auto min-h-[80px] gap-3 bg-white data-[hover=true]:bg-neobrutal-yellow py-4 px-4"
                   textValue="Profile"
+                  isReadOnly
                 >
-                  <div className="flex flex-col">
-                    <p className="font-bold text-black">Signed in as</p>
-                    <p className="font-bold text-black">{profile.personaName}</p>
+                  <div className="flex flex-col gap-2">
+                    <p className="font-bold text-black text-sm">Signed in as</p>
+                    <p className="font-bold text-black text-base">{profile.personaName}</p>
                   </div>
                 </DropdownItem>
                 <DropdownItem
                   key="logout"
                   as="button" 
-                  onClick={handleSteamLogout} 
-                  className="w-full text-left flex items-center justify-between bg-white data-[hover=true]:bg-neobrutal-pink font-bold text-black"
+                  onClick={handleLogoutClick} 
+                  className="w-full text-left flex items-center justify-between bg-white data-[hover=true]:bg-neobrutal-pink font-bold text-black py-4 px-4 mt-2"
                   textValue="Logout"
                 >
                   {isLoggingOut ? "Logging out..." : "Log Out"}
@@ -120,5 +135,6 @@ export default function Navbar() {
         </nav>
       </div>
     </header>
+    </>
   );
 }
