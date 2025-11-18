@@ -6,15 +6,18 @@ import prisma from '../../../library/prisma';
 import { SteamOwnedGamesResponse, SteamGame, SteamProfileResponse } from '../../../../types/api';
 
 const STEAM_API_KEY = process.env.STEAM_API_KEY;
+const DEBUG = process.env.NODE_ENV === 'development';
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const params = new URLSearchParams(url.search);
 
   // Log all incoming parameters for debugging
-  console.log('Received OpenID callback with parameters:');
-  for (const [key, value] of params.entries()) {
-    console.log(`  ${key}: ${value}`);
+  if (DEBUG) {
+    console.log('Received OpenID callback with parameters:');
+    for (const [key, value] of params.entries()) {
+      console.log(`  ${key}: ${value}`);
+    }
   }
 
   // Extract Steam ID before modifying params for verification
@@ -64,9 +67,11 @@ export async function GET(req: Request) {
   
   const verifyUrl = 'https://steamcommunity.com/openid/login';
 
-  console.log('Sending OpenID authentication verification to Steam.');
-  console.log('Verification URL:', verifyUrl);
-  console.log('Verification parameters count:', verifyParams.toString().split('&').length);
+  if (DEBUG) {
+    console.log('Sending OpenID authentication verification to Steam.');
+    console.log('Verification URL:', verifyUrl);
+    console.log('Verification parameters count:', verifyParams.toString().split('&').length);
+  }
 
   const response = await fetch(verifyUrl, {
     method: 'POST',
@@ -89,8 +94,10 @@ export async function GET(req: Request) {
 
   const body = await response.text();
 
-  console.log('Received OpenID authentication response from Steam.');
-  console.log('Verification response:', body);
+  if (DEBUG) {
+    console.log('Received OpenID authentication response from Steam.');
+    console.log('Verification response:', body);
+  }
 
   if (!body.includes('is_valid:true')) {
     console.error('Invalid login attempt detected.');
@@ -99,11 +106,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Invalid login attempt' }, { status: 401 });
   }
 
-  console.log(`Extracted Steam ID: ${steamId}`);
+  if (DEBUG) {
+    console.log(`Extracted Steam ID: ${steamId}`);
+  }
 
   // Fetch user's Steam profile
   const profileUrlApi = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${STEAM_API_KEY}&steamids=${steamId}`;
-  console.log(`Fetching profile data from: ${profileUrlApi}`);
+  if (DEBUG) {
+    console.log(`Fetching profile data from: ${profileUrlApi}`);
+  }
 
   const profileRes = await fetch(profileUrlApi);
   if (!profileRes.ok) {
@@ -115,7 +126,9 @@ export async function GET(req: Request) {
   }
 
   const profileData = (await profileRes.json()) as SteamProfileResponse;
-  console.log('Profile data fetched:', JSON.stringify(profileData, null, 2));
+  if (DEBUG) {
+    console.log('Profile data fetched:', JSON.stringify(profileData, null, 2));
+  }
 
   const profile = profileData.response.players[0];
   if (!profile) {
@@ -133,7 +146,9 @@ export async function GET(req: Request) {
     },
   });
 
-  console.log('User upserted:', JSON.stringify(user, null, 2));
+  if (DEBUG) {
+    console.log('User upserted:', JSON.stringify(user, null, 2));
+  }
 
   // -----------------------------
   // Fetch and Upsert User's Games
@@ -141,7 +156,9 @@ export async function GET(req: Request) {
 
   // Fetch user's owned games from Steam API
   const gamesUrlApi = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=${STEAM_API_KEY}&steamid=${steamId}&include_appinfo=true`;
-  console.log(`Fetching games data from: ${gamesUrlApi}`);
+  if (DEBUG) {
+    console.log(`Fetching games data from: ${gamesUrlApi}`);
+  }
 
   const gamesRes = await fetch(gamesUrlApi);
   if (!gamesRes.ok) {
@@ -153,7 +170,9 @@ export async function GET(req: Request) {
   }
 
   const gamesData = (await gamesRes.json()) as SteamOwnedGamesResponse;
-  console.log('Games data fetched:', JSON.stringify(gamesData, null, 2));
+  if (DEBUG) {
+    console.log('Games data fetched:', JSON.stringify(gamesData, null, 2));
+  }
 
   const games = gamesData.response.games;
   if (!games || games.length === 0) {
@@ -164,23 +183,37 @@ export async function GET(req: Request) {
 
     try {
 
-    // Optimized batch operations: fetch all existing games in one query
+    // Optimized batch operations: fetch all existing games in one query with full data for comparison
     const existingGames = await prisma.game.findMany({
       where: { userId: user.id },
-      select: { id: true, appid: true },
+      select: { 
+        id: true, 
+        appid: true,
+        name: true,
+        img_icon_url: true,
+        playtime_forever: true,
+      },
     });
 
-    const existingGameMap = new Map(existingGames.map(g => [g.appid, g.id]));
+    const existingGameMap = new Map(existingGames.map(g => [g.appid, g]));
     const gameAppIds = new Set(games.map(g => g.appid));
 
-    // Separate games into new and existing
+    // Separate games into new and existing (only if data has changed)
     const gamesToCreate: SteamGame[] = [];
     const gamesToUpdate: Array<{ id: number; game: SteamGame }> = [];
 
     games.forEach((game: SteamGame) => {
-      const existingId = existingGameMap.get(game.appid);
-      if (existingId) {
-        gamesToUpdate.push({ id: existingId, game });
+      const existing = existingGameMap.get(game.appid);
+      if (existing) {
+        // Only update if data has actually changed
+        if (
+          existing.name !== game.name ||
+          existing.img_icon_url !== (game.img_icon_url || '') ||
+          existing.playtime_forever !== (game.playtime_forever || 0)
+        ) {
+          gamesToUpdate.push({ id: existing.id, game });
+        }
+        // If unchanged, skip it entirely
       } else {
         gamesToCreate.push(game);
       }
@@ -309,7 +342,9 @@ export async function GET(req: Request) {
   
   const redirectUrl = `${baseUrl}/library`;
 
-  console.log(`Redirecting user to: ${redirectUrl}`);
+  if (DEBUG) {
+    console.log(`Redirecting user to: ${redirectUrl}`);
+  }
 
   // Create a NextResponse redirect
   const nextResponse = NextResponse.redirect(redirectUrl);
@@ -326,7 +361,9 @@ export async function GET(req: Request) {
     maxAge: 60 * 60 * 24 * 7, // 1 week in seconds
   });
 
-  console.log(`Set 'steamid' cookie and redirecting to: ${redirectUrl}`);
+  if (DEBUG) {
+    console.log(`Set 'steamid' cookie and redirecting to: ${redirectUrl}`);
+  }
 
   return nextResponse;
 }
