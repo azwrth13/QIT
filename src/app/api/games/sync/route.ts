@@ -10,11 +10,10 @@ export async function POST() {
   try {
     const profile = await getSteamProfile(steamId);
     if (!profile) return NextResponse.json({ error: 'Steam profile not found.' }, { status: 404 });
-    const games = await syncLibrary(steamId, profile.profileUrl);
-    if (games === null) return NextResponse.json({ error: 'Steam could not share this library. Set Game details to Public in Steam privacy settings.' }, { status: 403 });
-    const lastSynced = new Date().toISOString();
-    const response = NextResponse.json({ games, lastSynced });
-    response.cookies.set('library-synced', lastSynced, sessionCookieOptions);
+    const result = await syncLibrary(steamId, profile);
+    if (result === null) return NextResponse.json({ error: 'Steam could not share this library. Set Game details to Public in Steam privacy settings.' }, { status: 403 });
+    const response = NextResponse.json(result);
+    response.cookies.set('library-synced', result.lastSynced, sessionCookieOptions);
     return response;
   } catch (error) {
     logServerError('Library sync failed', error);

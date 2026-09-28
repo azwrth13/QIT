@@ -1,0 +1,16 @@
+{
+  "apphosting": [
+    {
+      "backendId": "qit",
+      "rootDir": "/",
+      "ignore": ["node_modules", ".git", ".next", "firebase-debug.log"]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "firestore": { "port": 8080 }
+  }
+}

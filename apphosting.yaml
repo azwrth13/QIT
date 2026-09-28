@@ -1,0 +1,13 @@
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+env:
+  - variable: NEXT_PUBLIC_BASE_URL
+    value: https://qit--quixotic-sol-510005-m4.us-central1.hosted.app
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: STEAM_API_KEY
+    secret: STEAM_API_KEY
+  - variable: SESSION_SECRET
+    secret: SESSION_SECRET

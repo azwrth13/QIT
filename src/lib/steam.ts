@@ -31,13 +31,6 @@ export function logServerError(context: string, error: unknown): void {
   console.error(context, { name });
 }
 
-export function baseUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_BASE_URL;
-  if (configured) return new URL(configured).origin;
-  if (process.env.NODE_ENV === 'production') throw new Error('NEXT_PUBLIC_BASE_URL is required');
-  return 'http://localhost:3000';
-}
-
 export function validateOpenId(params: URLSearchParams, returnTo: string): string | null {
   const seen = new Set<string>();
   for (const key of params.keys()) {

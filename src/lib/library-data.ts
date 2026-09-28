@@ -1,47 +1,62 @@
-import prisma from './prisma';
+import { db } from './firestore';
 import type { Game } from './games';
-import { getSteamGames } from './steam';
+import { getSteamGames, type SteamProfile } from './steam';
+import { getGenresForApps } from './genre-cache';
 
 export const AUTO_SYNC_COOKIE = 'library-autosync';
 
-export async function getStoredGames(steamId: string): Promise<Game[]> {
-  const user = await prisma.user.findUnique({
-    where: { steamId },
-    select: { games: { select: { appid: true, name: true, img_icon_url: true, playtime_forever: true } } },
-  });
-  return user?.games || [];
+export async function getStoredProfile(steamId: string): Promise<SteamProfile | null> {
+  const snapshot = await db.collection('users').doc(steamId).get();
+  return snapshot.exists ? snapshot.data() as SteamProfile : null;
 }
 
-export async function syncLibrary(steamId: string, profileUrl: string): Promise<Game[] | null> {
+export async function getLastSyncedAt(steamId: string): Promise<string | null> {
+  const snapshot = await db.collection('users').doc(steamId).get();
+  return snapshot.data()?.lastSyncedAt || null;
+}
+
+export async function getStoredGames(steamId: string): Promise<Game[]> {
+  const snapshot = await db.collection('users').doc(steamId).collection('games').get();
+  const games = snapshot.docs.map(doc => doc.data() as Game);
+  const genres = await getGenresForApps(games.map(game => game.appid), 40);
+  return games.map(game => ({ ...game, genres: genres[game.appid] || [] }));
+}
+
+export async function syncLibrary(steamId: string, profile: SteamProfile): Promise<{ games: Game[]; lastSynced: string } | null> {
   const games = await getSteamGames(steamId);
   if (games === null) return null;
-  const user = await prisma.user.upsert({
-    where: { steamId }, update: { profileUrl }, create: { steamId, profileUrl }, select: { id: true },
-  });
-  await prisma.$transaction(async tx => {
-    const existing = await tx.game.findMany({
-      where: { userId: user.id }, select: { appid: true, name: true, img_icon_url: true, playtime_forever: true },
-    });
-    const incoming = new Set(games.map(game => game.appid));
-    await tx.game.deleteMany({ where: { userId: user.id, appid: { notIn: [...incoming] } } });
-    const old = new Map(existing.map(game => [game.appid, game]));
-    const rows = games.map(game => ({
-      appid: game.appid, name: [...game.name].slice(0, 191).join(''), img_icon_url: game.img_icon_url || '',
-      playtime_forever: game.playtime_forever || 0,
-    }));
-    const fresh = rows.filter(game => !old.has(game.appid));
-    if (fresh.length) await tx.game.createMany({ data: fresh.map(game => ({ ...game, userId: user.id })) });
-    const changed = rows.filter(game => {
-      const stored = old.get(game.appid);
-      return stored && (stored.name !== game.name || stored.img_icon_url !== game.img_icon_url || stored.playtime_forever !== game.playtime_forever);
-    });
-    for (const { appid, ...data } of changed) {
-      await tx.game.update({ where: { appid_userId: { appid, userId: user.id } }, data });
+  const userRef = db.collection('users').doc(steamId);
+  const gamesRef = userRef.collection('games');
+  const existing = await gamesRef.get();
+  const incoming = new Map(games.map(game => [String(game.appid), {
+    appid: game.appid, name: game.name, img_icon_url: game.img_icon_url || '',
+    playtime_forever: game.playtime_forever || 0,
+  }]));
+  const writes: Array<(batch: FirebaseFirestore.WriteBatch) => void> = [];
+  for (const doc of existing.docs) {
+    const next = incoming.get(doc.id);
+    if (!next) writes.push(batch => batch.delete(doc.ref));
+    else {
+      const stored = doc.data();
+      if (stored.appid !== next.appid || stored.name !== next.name ||
+          stored.img_icon_url !== next.img_icon_url || stored.playtime_forever !== next.playtime_forever) {
+        writes.push(batch => batch.set(doc.ref, next));
+      }
     }
-  }, { timeout: 60000 });
-  return games;
+    incoming.delete(doc.id);
+  }
+  for (const [id, game] of incoming) writes.push(batch => batch.set(gamesRef.doc(id), game));
+  for (let offset = 0; offset < writes.length; offset += 450) {
+    const batch = db.batch();
+    for (const write of writes.slice(offset, offset + 450)) write(batch);
+    await batch.commit();
+  }
+  const lastSynced = new Date().toISOString();
+  await userRef.set({ ...profile, lastSyncedAt: lastSynced }, { merge: true });
+  const genres = await getGenresForApps(games.map(game => game.appid), 40);
+  return { games: games.map(game => ({ ...game, genres: genres[game.appid] || [] })), lastSynced };
 }
 
-export async function ensureUser(steamId: string, profileUrl: string) {
-  await prisma.user.upsert({ where: { steamId }, update: { profileUrl }, create: { steamId, profileUrl } });
+export async function ensureUser(steamId: string, profile: SteamProfile) {
+  await db.collection('users').doc(steamId).set(profile, { merge: true });
 }

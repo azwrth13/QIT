@@ -1,21 +1,27 @@
 # QIT
 
-QIT picks a random game from a filtered Steam library. You can browse any public Steam library without signing in. Signing in with Steam syncs your own library once, and you can refresh it from the library page.
+QIT picks a random game from a filtered Steam library. Visitors can browse public Steam libraries without signing in. Steam sign-in saves the user's profile and syncs their library into Firestore. A library can be refreshed from its page.
 
-## Local setup
+## Local development
 
-Use Node.js 22.13 or newer and MySQL. Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `STEAM_API_KEY`, `SESSION_SECRET` (at least 32 random characters), and `NEXT_PUBLIC_BASE_URL` (normally `http://localhost:3000`). The base URL must match the Steam OpenID callback origin. Never commit real credentials.
+Use Node.js 22.13 or newer. Run `npm ci`, then copy `.env.example` to `.env.local`. Set `STEAM_API_KEY`, a random `SESSION_SECRET` of at least 32 characters, and `NEXT_PUBLIC_BASE_URL` to the exact local origin, normally `http://localhost:3000`. Steam OpenID returns to `<NEXT_PUBLIC_BASE_URL>/api/auth/steam-callback`.
 
-Run `npm ci`. The postinstall script generates Prisma Client. Apply existing migrations with `npx prisma migrate deploy`, then run `npm run dev` and open `http://localhost:3000`.
+Install the Firebase CLI and Java, run `firebase emulators:start --only firestore`, then run `npm run dev` in a second terminal. `.env.local` sets `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080`; the Admin SDK connects to the emulator without a service account. To use a real Firestore database in local development, unset that variable and point `GOOGLE_APPLICATION_CREDENTIALS` at a local service account JSON file. Never commit that file or credentials.
 
-Your Steam Game details must be Public to show owned games. Steam sign-in reads your public profile; QIT stores your Steam ID, profile URL, and synced game details in MySQL. The public library view reads live from Steam and does not write games to the database.
+Your Steam Game details must be Public for QIT to sync owned games. Firestore stores profiles under `users/{steamid}`, owned games under `users/{steamid}/games/{appid}`, and shared genre data under `apps/{appid}`. Existing Railway data is not migrated; users and libraries are rebuilt from Steam at the next sign-in. The public library view reads live from Steam and does not store games.
 
-Sessions use signed and encrypted HTTP-only cookies and last seven days. Existing unsigned Steam ID cookies are not accepted; users must sign in again. Rotating `SESSION_SECRET` invalidates current sessions. Logout clears the session cookie.
+Sessions use signed and encrypted HTTP-only cookies for seven days. Existing unsigned Steam ID cookies are not accepted, and rotating `SESSION_SECRET` invalidates current sessions. Logout clears the session cookie.
 
-The friend and genre APIs require a valid session. Genre requests accept up to 40 unique app IDs owned by the signed-in user; larger libraries load in batches. Profile search is public and accepts a 17-digit Steam ID, vanity name, or Steam profile URL. Profile search and public library lookups are each limited to 20 requests per minute per client IP and cache responses briefly. `TRUSTED_PROXY_HOPS` selects the `X-Forwarded-For` entry counted from the right (default 2 for Firebase App Hosting's Google load balancer); shorter headers use their leftmost entry and missing headers fall back to `X-Real-IP`. Steam request failures log only safe error metadata.
+Friend and genre APIs require a valid session. Genre requests accept up to 40 unique owned app IDs. The app stores Steam Store genre responses in Firestore for one day and fills missing entries in small, spaced batches. Profile search accepts a Steam ID, vanity name, or Steam profile URL. Profile search and public library lookups are limited to 20 requests per minute per client IP. `TRUSTED_PROXY_HOPS` selects the `X-Forwarded-For` entry counted from the right (default 2 for Firebase App Hosting).
+
+## Firebase App Hosting
+
+The default Firebase project is `quixotic-sol-510005-m4`. The `qit` backend in `us-central1` is configured for local source deployment at `https://qit--quixotic-sol-510005-m4.us-central1.hosted.app`. `firebase.json` connects this repository to that backend. `apphosting.yaml` sets the production base URL and references `STEAM_API_KEY` and `SESSION_SECRET` by secret name. App Hosting uses Application Default Credentials for Firestore. The backend needs Node.js 22; `package.json` requires Node 22.13 through 22.x. Before rollout, set the backend runtime to `nodejs22` in App Hosting settings; the existing backend currently reports an unversioned `nodejs` runtime.
+
+For a new project, create a Firestore database, create an App Hosting backend connected to `azwrth13/QIT`, and set secrets with `firebase apphosting:secrets:set STEAM_API_KEY` and `firebase apphosting:secrets:set SESSION_SECRET`. Grant that backend access to both secrets. For this project the backend and secret access already exist. Configure Steam OpenID to return to `https://qit--quixotic-sol-510005-m4.us-central1.hosted.app/api/auth/steam-callback` and use that hosted origin as the realm. Deploy the application and Firestore rules with `firebase deploy --only apphosting,firestore`. `firestore.rules` denies direct client access; all data access runs on the server.
 
 ## Checks
 
-Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. Pull requests and pushes to `master` run these checks plus a production dependency audit in GitHub Actions.
+Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. Run the Firestore integration tests with `npm run test:firestore`, which starts the Firestore emulator. Pull requests and pushes to `master` run the checks plus a production dependency audit in GitHub Actions.
 
-The PostCSS override keeps Next.js's transitive PostCSS dependency on a patched 8.x release; retain it until the framework dependency itself meets that floor.
+The PostCSS override keeps Next.js's transitive PostCSS dependency on a patched 8.x release.
