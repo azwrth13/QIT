@@ -114,7 +114,7 @@ export default function Library() {
           </div>
           <div>
             <h3 className="text-xl font-bold mb-4 text-black">Random Game Picker</h3>
-            <RandomGamePicker games={filteredGames} />
+            <RandomGamePicker games={filteredGames} showLaunchButton />
           </div>
         </div>
       )}
