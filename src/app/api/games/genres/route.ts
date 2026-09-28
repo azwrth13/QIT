@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getSteamId } from '@/lib/auth';
 import { getStoredGames } from '@/lib/library-data';
-import { logServerError } from '@/lib/steam';
+import { logServerError, makeRoom } from '@/lib/steam';
 
 const genreCache = new Map<number, { genres: string[]; expires: number }>();
 const day = 24 * 60 * 60 * 1000;
 const GENRE_BATCH_SIZE = 40;
+const GENRE_CACHE_LIMIT = 20000;
 
 export async function POST(req: Request) {
   const steamId = await getSteamId();
@@ -39,6 +40,8 @@ export async function POST(req: Request) {
         const data = await response.json();
         const list = !data[id]?.success ? [] : (data[id].data?.genres || []).map((entry: { description: string }) => entry.description).filter(Boolean);
         genres[id] = list;
+        genreCache.delete(id);
+        makeRoom(genreCache, entry => entry.expires, Date.now(), GENRE_CACHE_LIMIT);
         genreCache.set(id, { genres: list, expires: Date.now() + day });
       } catch { errorCount++; }
     }));

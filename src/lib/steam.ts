@@ -131,11 +131,11 @@ const PUBLIC_MAP_LIMIT = 1000;
 const publicRequests = new Map<string, { count: number; resetAt: number }>();
 const publicCache = new Map<string, { expiresAt: number; library: ReturnType<typeof getPublicLibrary> }>();
 
-function makeRoom<T>(map: Map<string, T>, expiry: (value: T) => number, now: number) {
-  if (map.size < PUBLIC_MAP_LIMIT) return;
+export function makeRoom<K, T>(map: Map<K, T>, expiry: (value: T) => number, now: number, limit = PUBLIC_MAP_LIMIT) {
+  if (map.size < limit) return;
   for (const [key, value] of map) if (expiry(value) <= now) map.delete(key);
   for (const key of map.keys()) {
-    if (map.size < PUBLIC_MAP_LIMIT) break;
+    if (map.size < limit) break;
     map.delete(key);
   }
 }

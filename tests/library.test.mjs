@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pickGame } from '../src/lib/games.ts';
-import { clientIpFromForwardedFor, getPublicLibrary, getPublicLibraryResponse } from '../src/lib/steam.ts';
+import { clientIpFromForwardedFor, getPublicLibrary, getPublicLibraryResponse, makeRoom } from '../src/lib/steam.ts';
 
 test('picker never falls back to full library when filters have no matches', () => {
   const allGames = [{ appid: 1, name: 'One' }];
@@ -112,4 +112,13 @@ test('concurrent public library lookups for one Steam ID share a single Steam re
     if (previousKey === undefined) delete process.env.STEAM_API_KEY;
     else process.env.STEAM_API_KEY = previousKey;
   }
+});
+
+test('makeRoom drops expired entries first, then the oldest, to stay under the cap', () => {
+  const cache = new Map([[1, { expires: 50 }], [2, { expires: 500 }], [3, { expires: 10 }], [4, { expires: 900 }]]);
+  makeRoom(cache, entry => entry.expires, 100, 4);
+  assert.deepEqual([...cache.keys()], [2, 4]);
+  cache.set(5, { expires: 900 }).set(6, { expires: 900 });
+  makeRoom(cache, entry => entry.expires, 100, 3);
+  assert.deepEqual([...cache.keys()], [5, 6]);
 });
