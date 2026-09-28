@@ -1,57 +1,19 @@
 import { NextResponse } from 'next/server';
-import fetch from 'node-fetch';
-
-const STEAM_API_KEY = process.env.STEAM_API_KEY;
+import { getSteamId } from '@/lib/auth';
+import { isSteamId, logServerError, steamApiUrl, steamJson } from '@/lib/steam';
+import { SteamOwnedGamesResponse } from '@/types/api';
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const friendSteamId = searchParams.get('steamid');
-
-    if (!friendSteamId) {
-      return NextResponse.json(
-        { error: 'Friend Steam ID is required' },
-        { status: 400 }
-      );
-    }
-
-    if (!STEAM_API_KEY) {
-      return NextResponse.json(
-        { error: 'Steam API key not configured' },
-        { status: 500 }
-      );
-    }
-
-    // Fetch friend's owned games from Steam API
-    const gamesUrlApi = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=${STEAM_API_KEY}&steamid=${friendSteamId}&include_appinfo=true`;
-    
-    const gamesRes = await fetch(gamesUrlApi);
-    
-    if (!gamesRes.ok) {
-      return NextResponse.json(
-        { error: 'Failed to fetch friend games from Steam' },
-        { status: 500 }
-      );
-    }
-
-    const gamesData = await gamesRes.json();
-    const games = gamesData.response?.games || [];
-
-    // Format games to match our Game interface
-    const formattedGames = games.map((game: any) => ({
-      appid: game.appid,
-      name: game.name,
-      img_icon_url: game.img_icon_url,
-      playtime_forever: game.playtime_forever,
-    }));
-
-    return NextResponse.json({ games: formattedGames });
+    if (!await getSteamId()) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    const friendSteamId = new URL(req.url).searchParams.get('steamid');
+    if (!isSteamId(friendSteamId)) return NextResponse.json({ error: 'Invalid friend Steam ID' }, { status: 400 });
+    const data = await steamJson<SteamOwnedGamesResponse>(steamApiUrl('/IPlayerService/GetOwnedGames/v1/', { steamid: friendSteamId, include_appinfo: 'true' }));
+    return NextResponse.json({ games: (data.response.games || []).map(game => ({
+      appid: game.appid, name: game.name, img_icon_url: game.img_icon_url, playtime_forever: game.playtime_forever,
+    })) });
   } catch (error) {
-    console.error('Error fetching friend games:', error);
-    return NextResponse.json(
-      { error: 'Error fetching friend games' },
-      { status: 500 }
-    );
+    logServerError('Error fetching friend games', error);
+    return NextResponse.json({ error: 'Error fetching friend games' }, { status: 500 });
   }
 }
-

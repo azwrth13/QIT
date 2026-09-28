@@ -6,28 +6,38 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint . --ext .js,.mjs,.ts,.mts,.tsx --ignore-pattern .next --ignore-pattern next-env.d.ts --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@nextui-org/react": "^2.4.8",
+    "@nextui-org/react": "^2.6.11",
     "@prisma/client": "^5.22.0",
+    "framer-motion": "^13.4.4",
+    "iron-session": "^9.0.1",
     "lucide-react": "^0.460.0",
-    "next": "15.0.2",
-    "node-fetch": "^3.3.2",
+    "next": "^15.5.26",
     "prisma": "^5.22.0",
     "randombytes": "^2.1.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/node": "^22",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10",
     "eslint": "^8",
-    "eslint-config-next": "15.0.2",
-    "postcss": "^8",
+    "eslint-config-next": "^15.5.26",
+    "postcss": "^8.5.28",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.2"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "overrides": {
+    "postcss": "$postcss"
   }
 }

@@ -1,15 +1,22 @@
 import { NextResponse } from 'next/server';
-import fetch from 'node-fetch';
+import { getSteamId } from '@/lib/auth';
+import { logServerError, steamJson } from '@/lib/steam';
+import { validateAppIds } from '@/lib/genres';
+import prisma from '../../../library/prisma';
 
 export async function POST(req: Request) {
   try {
-    const { appids } = await req.json();
-
-    if (!appids || !Array.isArray(appids) || appids.length === 0) {
-      return NextResponse.json(
-        { error: 'App IDs array is required' },
-        { status: 400 }
-      );
+    const steamId = await getSteamId();
+    if (!steamId) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    let body: unknown;
+    try { body = await req.json(); }
+    catch { return NextResponse.json({ error: 'Malformed JSON' }, { status: 400 }); }
+    const appids = validateAppIds(body);
+    if (!appids) return NextResponse.json({ error: 'Provide 1–500 unique positive integer appids' }, { status: 400 });
+    const user = await prisma.user.findUnique({ where: { steamId }, select: { games: { select: { appid: true } } } });
+    const owned = new Set(user?.games.map(game => game.appid));
+    if (appids.length > owned.size || appids.some(id => !owned.has(id))) {
+      return NextResponse.json({ error: 'App IDs must belong to your library' }, { status: 400 });
     }
 
     // Batch size for rate limiting (Steam API can handle ~20-30 requests at a time)
@@ -25,27 +32,21 @@ export async function POST(req: Request) {
       // Fetch genres for each game in the batch
       const promises = batch.map(async (appid: number) => {
         try {
-          const response = await fetch(
-            `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=us`
-          );
-          
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-
-          const data = await response.json();
+          const url = new URL('https://store.steampowered.com/api/appdetails');
+          url.search = new URLSearchParams({ appids: String(appid), cc: 'us' }).toString();
+          const data = await steamJson<Record<string, { data?: { genres?: { description: string }[] } }>>(url);
           const gameData = data[appid.toString()]?.data;
           
           if (gameData?.genres && Array.isArray(gameData.genres)) {
             const gameGenres = gameData.genres
-              .map((g: any) => g.description)
+              .map((g) => g.description)
               .filter((g: string) => g); // Filter out empty strings
             
             if (gameGenres.length > 0) {
               genresMap[appid] = gameGenres;
             }
           }
-        } catch (error) {
+        } catch {
           // Silently track errors without logging each one
           errors.push(appid);
         }
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
       totalRequested: appids.length,
     });
   } catch (error) {
-    console.error('Error in genres API route:', error);
+    logServerError('Error in genres API route', error);
     return NextResponse.json(
       { error: 'Failed to fetch genres' },
       { status: 500 }

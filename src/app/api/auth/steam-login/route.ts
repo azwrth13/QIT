@@ -1,20 +1,15 @@
 import { NextResponse } from 'next/server';
+import { baseUrl, OPENID_ENDPOINT, OPENID_NAMESPACE } from '@/lib/steam';
 
-export async function GET(req: Request) {
-  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-  
-  if (!baseUrl) {
-    if (process.env.VERCEL_URL) {
-      baseUrl = `https://${process.env.VERCEL_URL}`;
-    } else {
-      baseUrl = 'http://localhost:3000';
-    }
-  }
-  
-  const callbackUrl = `${baseUrl}/api/auth/steam-callback`;
-  const realm = baseUrl;
-  
-  const steamLoginUrl = `https://steamcommunity.com/openid/login?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.return_to=${encodeURIComponent(callbackUrl)}&openid.realm=${encodeURIComponent(realm)}&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select`;
-  
-  return NextResponse.redirect(steamLoginUrl);
+export async function GET() {
+  const url = new URL(OPENID_ENDPOINT);
+  url.search = new URLSearchParams({
+    'openid.ns': OPENID_NAMESPACE,
+    'openid.mode': 'checkid_setup',
+    'openid.return_to': `${baseUrl()}/api/auth/steam-callback`,
+    'openid.realm': baseUrl(),
+    'openid.identity': `${OPENID_NAMESPACE}/identifier_select`,
+    'openid.claimed_id': `${OPENID_NAMESPACE}/identifier_select`,
+  }).toString();
+  return NextResponse.redirect(url);
 }

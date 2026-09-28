@@ -4,7 +4,16 @@ A Steam library randomizer built with [Next.js](https://nextjs.org) featuring a 
 
 ## Getting Started
 
-First, run the development server:
+Use Node.js 22.13 or later. Install dependencies with `npm ci`, copy
+`.env.example` to `.env`, and supply your MySQL connection, Steam Web API key,
+and a randomly generated `SESSION_SECRET` of at least 32 characters. Never
+commit real credentials. Set `NEXT_PUBLIC_BASE_URL` to the public HTTPS origin
+in production; the Steam callback must exactly match that origin plus
+`/api/auth/steam-callback`.
+
+Run `npx prisma generate` and apply the existing migrations with
+`npx prisma migrate deploy` against your configured database. Then start the
+development server:
 
 ```bash
 npm run dev
@@ -36,3 +45,29 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Validation and sessions
+
+Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
+Pull requests and pushes to `master` run these checks plus a production
+dependency audit in GitHub Actions, without production credentials.
+
+Sessions use signed and encrypted HTTP-only cookies, last seven days, and
+require HTTPS in production. Existing unsigned Steam ID cookies are no longer
+accepted; users must sign in again. Rotating `SESSION_SECRET` invalidates all
+current sessions. Logout removes the browser cookie.
+
+The friend and genre APIs require a valid session. Profile search is public so
+signed-out visitors can look up a profile; it accepts a 17-digit Steam ID, a
+vanity name, or a Steam profile URL, is limited to 20 requests per minute per
+client IP, and caches results for one minute. The client IP is the
+`X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` positions from the right (default
+2, matching Firebase App Hosting's Google load balancer, which appends the
+client IP and then its own); shorter headers use their leftmost entry, and
+requests without the header fall back to `X-Real-IP`. Genre requests
+accept 1–500 unique positive integer app IDs owned by the caller; requests for
+larger libraries must be split into batches. Steam request failures log only
+safe error metadata, never request URLs or profile payloads.
+
+The PostCSS override keeps Next.js's transitive PostCSS dependency on a patched
+8.x release; retain it until the framework dependency itself meets that floor.

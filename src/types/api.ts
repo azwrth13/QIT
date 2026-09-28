@@ -6,6 +6,9 @@ export interface SteamProfileResponse {
       steamid: string;
       profileurl: string;
       avatarfull: string;
+      avatarmedium?: string;
+      communityvisibilitystate?: number;
+      profilestate?: number;
       personaname: string;
     }[];
   };

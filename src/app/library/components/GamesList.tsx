@@ -6,6 +6,7 @@ import { useState, useMemo, memo, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { SearchIcon, X, UserX } from 'lucide-react';
 import { Game } from "../hooks/useFetchGames";
+import { fetchGenreBatches } from '@/lib/genres';
 
 interface GameListProps {
   games: Game[];
@@ -61,28 +62,8 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
       }
 
       try {
-        // Fetch genres from server-side API route
-        const appids = gamesNeedingGenres.map(g => g.appid);
-        const response = await fetch('/api/games/genres', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ appids }),
-        });
-
-        if (isCancelled) return;
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          // Log summary error instead of individual errors
-          console.error('Failed to fetch genres:', errorData.error || 'Unknown error');
-          setLoadingGenres(false);
-          return;
-        }
-
-        const data = await response.json();
-        const genresMap: Record<number, string[]> = data.genres || {};
+        const data = await fetchGenreBatches(gamesNeedingGenres.map(g => g.appid));
+        const genresMap = data.genres;
 
         if (isCancelled) return;
 
