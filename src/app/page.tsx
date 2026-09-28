@@ -13,6 +13,8 @@ interface SteamProfile {
   profileUrl: string;
   avatarFull: string;
   avatarMedium: string;
+  steamLevel?: number;
+  badgeCount?: number;
 }
 
 export default function Home() {
@@ -236,6 +238,12 @@ export default function Home() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-black mb-1">{profile.personaName}</h3>
                   <p className="text-sm text-black font-bold">Steam ID: {profile.steamId}</p>
+                  {(profile.steamLevel !== undefined || profile.badgeCount !== undefined) && (
+                    <div className="flex flex-wrap gap-2 mt-2 text-xs font-bold text-black">
+                      {profile.steamLevel !== undefined && <span className="bg-neobrutal-yellow border-2 border-black px-2 py-1">Level {profile.steamLevel}</span>}
+                      {profile.badgeCount !== undefined && <span className="bg-white border-2 border-black px-2 py-1">{profile.badgeCount} badges</span>}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex gap-3">

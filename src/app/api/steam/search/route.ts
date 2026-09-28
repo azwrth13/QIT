@@ -39,10 +39,28 @@ async function lookup(input: { steamId: string } | { vanity: string }): Promise<
   const data = await steamJson<SteamProfileResponse>(steamApiUrl('/ISteamUser/GetPlayerSummaries/v2/', { steamids: steamId }));
   const player = data.response.players.find(player => player.steamid === steamId);
   if (!player) return { status: 404, body: { error: 'Steam profile not found' } };
+  let steamLevel: number | undefined;
+  let badgeCount: number | undefined;
+  if (player.communityvisibilitystate === 3) {
+    const [levelResult, badgesResult] = await Promise.allSettled([
+      steamJson<{ response?: { player_level?: number } }>(steamApiUrl('/IPlayerService/GetSteamLevel/v1/', { steamid: steamId })),
+      steamJson<{ response?: { badges?: unknown[] } }>(steamApiUrl('/IPlayerService/GetBadges/v1/', { steamid: steamId })),
+    ]);
+    const level = levelResult.status === 'fulfilled' ? levelResult.value.response?.player_level : undefined;
+    if (typeof level === 'number' && Number.isInteger(level)) {
+      steamLevel = level;
+    }
+    const badges = badgesResult.status === 'fulfilled' ? badgesResult.value.response?.badges : undefined;
+    if (Array.isArray(badges)) {
+      badgeCount = badges.length;
+    }
+  }
   return { status: 200, body: {
     steamId: player.steamid, personaName: player.personaname, profileUrl: player.profileurl,
     avatarFull: player.avatarfull, avatarMedium: player.avatarmedium,
     communityVisibilityState: player.communityvisibilitystate, profileState: player.profilestate,
+    ...(steamLevel === undefined ? {} : { steamLevel }),
+    ...(badgeCount === undefined ? {} : { badgeCount }),
   } };
 }
 

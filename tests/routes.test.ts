@@ -86,18 +86,42 @@ describe('post-login auto sync', () => {
 
 describe('public profile search', () => {
   const searchRequest = (q: string, ip: string) => new Request(`https://qit.example/api/steam/search?${new URLSearchParams({ q })}`, { headers: { 'x-forwarded-for': ip } });
-  const player = (id: string) => Response.json({ response: { players: [{ steamid: id, personaname: 'Player', profileurl: `https://steamcommunity.com/profiles/${id}` }] } });
+  const player = (id: string, visibility = 3) => Response.json({ response: { players: [{ steamid: id, personaname: 'Player', profileurl: `https://steamcommunity.com/profiles/${id}`, communityvisibilitystate: visibility }] } });
   beforeEach(() => vi.stubEnv('STEAM_API_KEY', 'test-key'));
   it('resolves a vanity name for a signed-out visitor and caches the result', async () => {
     const id = '76561198000000001';
-    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ response: { steamid: id } })).mockResolvedValueOnce(player(id));
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ response: { steamid: id } })).mockResolvedValueOnce(player(id))
+      .mockResolvedValueOnce(Response.json({ response: { player_level: 42 } }))
+      .mockResolvedValueOnce(Response.json({ response: { badges: [{}, {}, {}] } }));
     for (let i = 0; i < 2; i++) {
       const response = await search(searchRequest('cached-name', '203.0.113.1'));
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ steamId: id, personaName: 'Player' });
+      expect(await response.json()).toMatchObject({ steamId: id, personaName: 'Player', steamLevel: 42, badgeCount: 3 });
     }
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(4);
     expect(new URL(String(vi.mocked(fetch).mock.calls[0][0])).searchParams.get('vanityurl')).toBe('cached-name');
+    expect(new URL(String(vi.mocked(fetch).mock.calls[2][0])).pathname).toBe('/IPlayerService/GetSteamLevel/v1/');
+    expect(new URL(String(vi.mocked(fetch).mock.calls[3][0])).pathname).toBe('/IPlayerService/GetBadges/v1/');
+  });
+  it('omits level and badges when the profile is private', async () => {
+    const id = '76561198000000002';
+    vi.mocked(fetch).mockResolvedValueOnce(player(id, 1));
+    const response = await search(searchRequest(id, '203.0.113.8'));
+    const body = await response.json();
+    expect(body).toMatchObject({ steamId: id });
+    expect(body).not.toHaveProperty('steamLevel');
+    expect(body).not.toHaveProperty('badgeCount');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('omits whichever cosmetic fields fail to load without failing search', async () => {
+    const id = '76561198000000003';
+    vi.mocked(fetch).mockResolvedValueOnce(player(id)).mockRejectedValueOnce(new Error('level unavailable'))
+      .mockResolvedValueOnce(Response.json({ response: { badges: [{}, {}] } }));
+    const response = await search(searchRequest(id, '203.0.113.9'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ steamId: id, badgeCount: 2 });
+    expect(body).not.toHaveProperty('steamLevel');
   });
   it('rejects invalid input before calling Steam', async () => {
     for (const q of ['', 'a'.repeat(257), 'name&key=x', 'https://evil.example/id/name']) {
