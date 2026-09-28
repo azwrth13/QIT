@@ -37,9 +37,9 @@ describe('route authentication', () => {
     if (credential === 'forged') cookieValues.set(SESSION_COOKIE, steamId);
     const responses = await Promise.all([
       games(), profile(), friend(new Request(`https://qit.example/api/games/friend?steamid=${steamId}`)),
-      search(new Request(`https://qit.example/api/steam/search?q=${steamId}`)), genres(request('{"appids":[10]}')),
+      genres(request('{"appids":[10]}')),
     ]);
-    expect(responses.map(response => response.status)).toEqual([401, 401, 401, 401, 401]);
+    expect(responses.map(response => response.status)).toEqual([401, 401, 401, 401]);
     expect(findUnique).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -49,6 +49,38 @@ describe('route authentication', () => {
     const response = await games();
     expect(response.status).toBe(200);
     expect(findUnique).toHaveBeenCalledWith({ where: { steamId }, include: { games: true } });
+  });
+});
+
+describe('public profile search', () => {
+  const searchRequest = (q: string, ip: string) => new Request(`https://qit.example/api/steam/search?${new URLSearchParams({ q })}`, { headers: { 'x-forwarded-for': ip } });
+  const player = (id: string) => Response.json({ response: { players: [{ steamid: id, personaname: 'Player', profileurl: `https://steamcommunity.com/profiles/${id}` }] } });
+  beforeEach(() => vi.stubEnv('STEAM_API_KEY', 'test-key'));
+  it('resolves a vanity name for a signed-out visitor and caches the result', async () => {
+    const id = '76561198000000001';
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ response: { steamid: id } })).mockResolvedValueOnce(player(id));
+    for (let i = 0; i < 2; i++) {
+      const response = await search(searchRequest('cached-name', '203.0.113.1'));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ steamId: id, personaName: 'Player' });
+    }
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(new URL(String(vi.mocked(fetch).mock.calls[0][0])).searchParams.get('vanityurl')).toBe('cached-name');
+  });
+  it('rejects invalid input before calling Steam', async () => {
+    for (const q of ['', 'a'.repeat(257), 'name&key=x', 'https://evil.example/id/name']) {
+      expect((await search(searchRequest(q, '203.0.113.2'))).status).toBe(400);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('returns a friendly 429 after 20 requests per minute from one IP', async () => {
+    const responses = [];
+    for (let i = 0; i < 21; i++) responses.push(await search(searchRequest('bad input', '203.0.113.3')));
+    expect(responses.slice(0, 20).every(response => response.status === 400)).toBe(true);
+    expect(responses[20].status).toBe(429);
+    expect((await responses[20].json()).error).toMatch(/try again/);
+    expect((await search(searchRequest('bad input', '203.0.113.4'))).status).toBe(400);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

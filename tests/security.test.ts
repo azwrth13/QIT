@@ -75,6 +75,7 @@ describe('Steam inputs and URLs', () => {
     expect(parseSteamSearch(steamId)).toEqual({ steamId });
     expect(parseSteamSearch(`https://steamcommunity.com/profiles/${steamId}/`)).toEqual({ steamId });
     expect(parseSteamSearch('https://steamcommunity.com/id/my-name')).toEqual({ vanity: 'my-name' });
+    expect(parseSteamSearch(' my_name ')).toEqual({ vanity: 'my_name' });
     for (const invalid of ['https://evil.example/steamcommunity.com/profiles/' + steamId, 'https://steamcommunity.com.evil.example/id/name', 'https://steamcommunity.com/profiles/123', 'https://steamcommunity.com/id/name?key=other']) {
       expect(parseSteamSearch(invalid)).toBeNull();
     }

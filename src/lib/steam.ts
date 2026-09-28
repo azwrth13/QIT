@@ -60,6 +60,7 @@ export function validateOpenId(params: URLSearchParams, returnTo: string): strin
 export function parseSteamSearch(input: string): { steamId: string } | { vanity: string } | null {
   const cleaned = input.trim();
   if (isSteamId(cleaned)) return { steamId: cleaned };
+  if (/^[a-zA-Z0-9_-]{1,64}$/.test(cleaned)) return { vanity: cleaned };
   try {
     const url = new URL(cleaned.includes('://') ? cleaned : `https://${cleaned}`);
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash) return null;
