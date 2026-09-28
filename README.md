@@ -12,7 +12,7 @@ Your Steam Game details must be Public for QIT to sync owned games. Firestore st
 
 Sessions use signed and encrypted HTTP-only cookies for seven days. Existing unsigned Steam ID cookies are not accepted, and rotating `SESSION_SECRET` invalidates current sessions. Logout clears the session cookie.
 
-Friend and genre APIs require a valid session. Genre requests accept up to 40 unique owned app IDs. The app stores Steam Store genre responses in Firestore for one day and fills missing entries in small, spaced batches. Profile search accepts a Steam ID, vanity name, or Steam profile URL. Profile search and public library lookups are limited to 20 requests per minute per client IP. `TRUSTED_PROXY_HOPS` selects the `X-Forwarded-For` entry counted from the right (default 2 for Firebase App Hosting).
+Friend and genre APIs require a valid session. Genre requests accept up to 40 unique owned app IDs. The app stores Steam Store genre responses in Firestore for one day and fills missing entries in small, spaced batches. Profile search accepts a Steam ID, vanity name, or Steam profile URL. Signed-in users get suggestions from their Steam friends list in the search box; this requires a public Steam friends list. Profile search and public library lookups are limited to 20 requests per minute per client IP. `TRUSTED_PROXY_HOPS` selects the `X-Forwarded-For` entry counted from the right (default 2 for Firebase App Hosting).
 
 ## Firebase App Hosting
 
