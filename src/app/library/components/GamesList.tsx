@@ -54,11 +54,12 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
       const appids = games.filter(g => !g.genres || g.genres.length === 0).map(g => g.appid);
       let errorCount = 0;
       for (let start = 0; start < appids.length && !isCancelled; start += GENRE_BATCH_SIZE) {
+        const batch = appids.slice(start, start + GENRE_BATCH_SIZE);
         try {
           const response = await fetch('/api/games/genres', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ appids: appids.slice(start, start + GENRE_BATCH_SIZE) }),
+            body: JSON.stringify({ appids: batch }),
           });
           const data = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(data.error || 'Unknown error');
@@ -66,8 +67,8 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
           Object.assign(genresMap, data.genres || {});
           if (!isCancelled) applyGenres(genresMap);
         } catch (error) {
+          errorCount += batch.length;
           if (!isCancelled) console.error('Failed to fetch genres:', error);
-          return;
         }
       }
       if (errorCount > 0 && !isCancelled) console.warn(`Genres could not be loaded for ${errorCount} games.`);
