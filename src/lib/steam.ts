@@ -129,11 +129,20 @@ const PUBLIC_RATE_WINDOW_MS = 60 * 1000;
 const PUBLIC_CACHE_MS = 5 * 60 * 1000;
 const PUBLIC_MAP_LIMIT = 1000;
 const publicRequests = new Map<string, { count: number; resetAt: number }>();
-const publicCache = new Map<string, { expiresAt: number; library: Awaited<ReturnType<typeof getPublicLibrary>> }>();
+const publicCache = new Map<string, { expiresAt: number; library: ReturnType<typeof getPublicLibrary> }>();
 
-function pruneExpired<T>(map: Map<string, T>, expiry: (value: T) => number, now: number) {
+function makeRoom<T>(map: Map<string, T>, expiry: (value: T) => number, now: number) {
   if (map.size < PUBLIC_MAP_LIMIT) return;
   for (const [key, value] of map) if (expiry(value) <= now) map.delete(key);
+  for (const key of map.keys()) {
+    if (map.size < PUBLIC_MAP_LIMIT) break;
+    map.delete(key);
+  }
+}
+
+export function clientIpFromForwardedFor(forwardedFor: string | null, trustedProxyHops = Number(process.env.TRUSTED_PROXY_HOPS) || 1) {
+  const entries = (forwardedFor || '').split(',').map(entry => entry.trim()).filter(Boolean);
+  return entries[entries.length - trustedProxyHops] || 'unknown';
 }
 
 const publicMessages = {
@@ -144,18 +153,23 @@ const publicMessages = {
 
 export async function getPublicLibraryResponse(steamId: string, clientIp: string, now = Date.now()) {
   if (!/^\d{17}$/.test(steamId)) return { status: 400, body: { error: 'Steam ID must be exactly 17 digits.' } };
-  pruneExpired(publicRequests, bucket => bucket.resetAt, now);
   const bucket = publicRequests.get(clientIp);
-  if (!bucket || bucket.resetAt <= now) publicRequests.set(clientIp, { count: 1, resetAt: now + PUBLIC_RATE_WINDOW_MS });
-  else if (bucket.count >= PUBLIC_RATE_LIMIT) {
+  if (!bucket || bucket.resetAt <= now) {
+    publicRequests.delete(clientIp);
+    makeRoom(publicRequests, entry => entry.resetAt, now);
+    publicRequests.set(clientIp, { count: 1, resetAt: now + PUBLIC_RATE_WINDOW_MS });
+  } else if (bucket.count >= PUBLIC_RATE_LIMIT) {
     return { status: 429, body: { error: 'Too many requests. Please wait a minute and try again.' }, retryAfter: Math.ceil((bucket.resetAt - now) / 1000) };
   } else bucket.count++;
   let cached = publicCache.get(steamId);
   if (!cached || cached.expiresAt <= now) {
-    pruneExpired(publicCache, entry => entry.expiresAt, now);
-    cached = { expiresAt: now + PUBLIC_CACHE_MS, library: await getPublicLibrary(steamId) };
-    publicCache.set(steamId, cached);
+    publicCache.delete(steamId);
+    makeRoom(publicCache, entry => entry.expiresAt, now);
+    const entry = { expiresAt: now + PUBLIC_CACHE_MS, library: getPublicLibrary(steamId) };
+    entry.library.catch(() => { if (publicCache.get(steamId) === entry) publicCache.delete(steamId); });
+    publicCache.set(steamId, entry);
+    cached = entry;
   }
-  const { library } = cached;
+  const library = await cached.library;
   return { status: library.state === 'unknown' ? 404 : 200, body: { ...library, message: publicMessages[library.state] } };
 }

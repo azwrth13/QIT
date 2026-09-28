@@ -18,7 +18,6 @@ export default function VirtualGameGrid({ games }: { games: Game[] }) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => { if (container.current) container.current.scrollTop = 0; setScrollTop(0); }, [games]);
   const columns = width < 420 ? 1 : width < 700 ? 2 : width < 1000 ? 3 : 4;
   const rows = Math.ceil(games.length / columns);
   const height = Math.min(600, rows * rowHeight);

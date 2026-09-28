@@ -5,14 +5,15 @@ import { logServerError } from '@/lib/steam';
 
 const genreCache = new Map<number, { genres: string[]; expires: number }>();
 const day = 24 * 60 * 60 * 1000;
+const GENRE_BATCH_SIZE = 40;
 
 export async function POST(req: Request) {
   const steamId = await getSteamId();
   if (!steamId) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   let appids: unknown;
   try { ({ appids } = await req.json()); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
-  if (!Array.isArray(appids) || appids.length === 0 || appids.length > 3000 || appids.some(id => !Number.isSafeInteger(id) || id <= 0)) {
-    return NextResponse.json({ error: 'Enter up to 3000 valid app IDs.' }, { status: 400 });
+  if (!Array.isArray(appids) || appids.length === 0 || appids.length > GENRE_BATCH_SIZE || appids.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+    return NextResponse.json({ error: `Enter up to ${GENRE_BATCH_SIZE} valid app IDs.` }, { status: 400 });
   }
   const ids = [...new Set(appids as number[])];
   try {
@@ -36,8 +37,7 @@ export async function POST(req: Request) {
         const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${id}&cc=us`, { signal: AbortSignal.timeout(10000), next: { revalidate: 86400 } });
         if (!response.ok) throw new Error('Store request failed');
         const data = await response.json();
-        if (!data[id]?.success) throw new Error('Store has no details');
-        const list = (data[id].data?.genres || []).map((entry: { description: string }) => entry.description).filter(Boolean);
+        const list = !data[id]?.success ? [] : (data[id].data?.genres || []).map((entry: { description: string }) => entry.description).filter(Boolean);
         genres[id] = list;
         genreCache.set(id, { genres: list, expires: Date.now() + day });
       } catch { errorCount++; }

@@ -24,7 +24,6 @@ export default function Navbar() {
     try {
       const response = await fetch('/api/auth/steam-logout', { method: 'POST' });
       if (!response.ok) throw new Error('Could not sign out');
-      sessionStorage.removeItem('qit-profile');
       window.location.assign('/');
     } catch {
       setIsLoggingOut(false);

@@ -1,14 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getPublicLibraryResponse } from '../../../../../lib/steam';
-
-function clientIp(request: Request) {
-  return request.headers.get('x-forwarded-for')?.split(',')[0].trim() || request.headers.get('x-real-ip') || 'unknown';
-}
+import { clientIpFromForwardedFor, getPublicLibraryResponse } from '../../../../../lib/steam';
 
 export async function GET(request: Request, { params }: { params: Promise<{ steamid: string }> }) {
   try {
     const { steamid } = await params;
-    const result = await getPublicLibraryResponse(steamid, clientIp(request));
+    const result = await getPublicLibraryResponse(steamid, clientIpFromForwardedFor(request.headers.get('x-forwarded-for')));
     const headers: Record<string, string> = 'retryAfter' in result ? { 'Retry-After': String(result.retryAfter) } : {};
     return NextResponse.json(result.body, { status: result.status, headers });
   } catch (error) {

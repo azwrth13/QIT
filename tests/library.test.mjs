@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pickGame } from '../src/lib/games.ts';
-import { getPublicLibrary, getPublicLibraryResponse } from '../src/lib/steam.ts';
+import { clientIpFromForwardedFor, getPublicLibrary, getPublicLibraryResponse } from '../src/lib/steam.ts';
 
 test('picker never falls back to full library when filters have no matches', () => {
   const allGames = [{ appid: 1, name: 'One' }];
@@ -77,6 +77,33 @@ test('public library route validates ids, caches per Steam ID, and rate limits p
 
     await getPublicLibraryResponse('76561198000000001', '10.0.0.1', 5 * 60 * 1000 + 1);
     assert.equal(steamRequests, 2);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.STEAM_API_KEY;
+    else process.env.STEAM_API_KEY = previousKey;
+  }
+});
+
+test('client IP ignores client-supplied X-Forwarded-For entries', () => {
+  assert.equal(clientIpFromForwardedFor('1.1.1.1, 203.0.113.9', 1), '203.0.113.9');
+  assert.equal(clientIpFromForwardedFor('1.1.1.1, 203.0.113.9, 10.0.0.1', 2), '203.0.113.9');
+  assert.equal(clientIpFromForwardedFor(null, 1), 'unknown');
+});
+
+test('concurrent public library lookups for one Steam ID share a single Steam request', async () => {
+  const previousKey = process.env.STEAM_API_KEY;
+  const previousFetch = globalThis.fetch;
+  process.env.STEAM_API_KEY = 'test-key';
+  let steamRequests = 0;
+  globalThis.fetch = async () => {
+    steamRequests++;
+    await new Promise(resolve => setTimeout(resolve, 5));
+    return new Response(JSON.stringify({ response: { players: [] } }), { status: 200 });
+  };
+  try {
+    const results = await Promise.all([1, 2, 3].map(n => getPublicLibraryResponse('76561198000000002', `10.1.0.${n}`, 0)));
+    assert.deepEqual(results.map(result => result.status), [404, 404, 404]);
+    assert.equal(steamRequests, 1);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.STEAM_API_KEY;

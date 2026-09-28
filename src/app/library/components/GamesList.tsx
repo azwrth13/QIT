@@ -8,6 +8,8 @@ import VirtualGameGrid from './VirtualGameGrid';
 import { SearchIcon, X, UserX } from 'lucide-react';
 import { Game } from "../../../lib/games";
 
+const GENRE_BATCH_SIZE = 40;
+
 interface GameListProps {
   games: Game[];
   onFilteredGamesChange?: (filteredGames: Game[]) => void;
@@ -26,7 +28,6 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
   const [gamesWithGenres, setGamesWithGenres] = useState<Game[]>(games);
   const [genres, setGenres] = useState<string[]>([]);
-  const [loadingGenres, setLoadingGenres] = useState(false);
   
   // Friend search state
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
@@ -35,96 +36,41 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
   const [friendGames, setFriendGames] = useState<Game[]>([]);
   const [friendError, setFriendError] = useState<string | null>(null);
 
-  // Fetch genres for games
+  // Fetch genres for games in small batches so they fill in progressively
   useEffect(() => {
     let isCancelled = false;
 
+    const applyGenres = (genresMap: Record<number, string[]>) => {
+      const updatedGames = games.map(game => genresMap[game.appid] ? { ...game, genres: genresMap[game.appid] } : game);
+      const allGenres = new Set<string>();
+      updatedGames.forEach(game => game.genres?.forEach(genre => allGenres.add(genre)));
+      setGamesWithGenres(updatedGames);
+      setGenres(Array.from(allGenres).sort());
+    };
+
     const fetchGenres = async () => {
-      setGamesWithGenres(games);
-      if (games.length === 0) return;
-      
-      setLoadingGenres(true);
-      const gamesNeedingGenres = games.filter(g => !g.genres || g.genres.length === 0);
-      
-      if (gamesNeedingGenres.length === 0) {
-        // Extract genres from existing games
-        const allGenres = new Set<string>();
-        games.forEach(game => {
-          if (game.genres) {
-            game.genres.forEach(genre => allGenres.add(genre));
-          }
-        });
-        if (!isCancelled) {
-          setGenres(Array.from(allGenres).sort());
-          setGamesWithGenres(games);
-          setLoadingGenres(false);
-        }
-        return;
-      }
-
-      try {
-        // Fetch genres from server-side API route
-        const appids = gamesNeedingGenres.map(g => g.appid);
-        const response = await fetch('/api/games/genres', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ appids }),
-        });
-
-        if (isCancelled) return;
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          // Log summary error instead of individual errors
-          console.error('Failed to fetch genres:', errorData.error || 'Unknown error');
-          setLoadingGenres(false);
+      const genresMap: Record<number, string[]> = {};
+      applyGenres(genresMap);
+      const appids = games.filter(g => !g.genres || g.genres.length === 0).map(g => g.appid);
+      let errorCount = 0;
+      for (let start = 0; start < appids.length && !isCancelled; start += GENRE_BATCH_SIZE) {
+        try {
+          const response = await fetch('/api/games/genres', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appids: appids.slice(start, start + GENRE_BATCH_SIZE) }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || 'Unknown error');
+          errorCount += data.errorCount || 0;
+          Object.assign(genresMap, data.genres || {});
+          if (!isCancelled) applyGenres(genresMap);
+        } catch (error) {
+          if (!isCancelled) console.error('Failed to fetch genres:', error);
           return;
         }
-
-        const data = await response.json();
-        const genresMap: Record<number, string[]> = data.genres || {};
-
-        if (isCancelled) return;
-
-        // Update games with genres
-        const updatedGames = games.map(game => {
-          if (genresMap[game.appid]) {
-            return { ...game, genres: genresMap[game.appid] };
-          }
-          return game;
-        });
-
-        // Extract all unique genres
-        const allGenres = new Set<string>();
-        updatedGames.forEach(game => {
-          if (game.genres) {
-            game.genres.forEach(genre => allGenres.add(genre));
-          }
-        });
-
-        if (!isCancelled) {
-          setGamesWithGenres(updatedGames);
-          setGenres(Array.from(allGenres).sort());
-          
-          // Log summary if there were errors
-          if (data.errorCount > 0) {
-            console.warn(
-              `Fetched genres for ${data.successCount} games. ${data.errorCount} games failed.`
-            );
-          }
-        }
-      } catch (error) {
-        if (!isCancelled) {
-          // Log summary error instead of individual errors
-          console.error('Failed to fetch genres:', error);
-        }
-      } finally {
-        if (!isCancelled) {
-          setLoadingGenres(false);
-        }
       }
+      if (errorCount > 0 && !isCancelled) console.warn(`Genres could not be loaded for ${errorCount} games.`);
     };
 
     fetchGenres();
@@ -329,7 +275,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
             aria-label="Filter by genre"
             value={selectedGenre}
             onChange={(e) => setSelectedGenre(e.target.value)}
-            disabled={loadingGenres || genres.length === 0}
+            disabled={genres.length === 0}
             className="neobrutal-select px-3 py-2 border-4 border-black bg-white text-black focus:outline-none focus:bg-neobrutal-yellow font-bold disabled:bg-gray-200 disabled:cursor-not-allowed"
           >
             <option value="all">All Genres</option>
@@ -356,7 +302,10 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
 
       {/* Games Grid */}
       {filteredAndSortedGames.length > 0 ? (
-        <VirtualGameGrid games={filteredAndSortedGames} />
+        <VirtualGameGrid
+          key={JSON.stringify([searchQuery, sortBy, filterBy, selectedGenre, selectedFriend?.steamId])}
+          games={filteredAndSortedGames}
+        />
       ) : (
         <div className="text-center py-8">
           <p className="text-black font-bold">

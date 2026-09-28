@@ -17,16 +17,13 @@ export const useFetchUserProfile = () => {
     try {
       setLoading(true);
       setError(null);
-      const cached = sessionStorage.getItem('qit-profile');
-      if (cached) { setProfile(JSON.parse(cached)); return; }
-      const response = await fetch('/api/user/profile');
+      const response = await fetch('/api/user/profile', { cache: 'no-store' });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to fetch user profile.');
       }
       const data = await response.json();
       setProfile(data);
-      sessionStorage.setItem('qit-profile', JSON.stringify(data));
     } catch (err) {
       if ((err as Error).message !== 'Not authenticated. Steam ID is missing.') setError((err as Error).message);
       setProfile(null);
