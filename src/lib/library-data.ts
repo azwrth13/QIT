@@ -2,6 +2,8 @@ import prisma from './prisma';
 import type { Game } from './games';
 import { getSteamGames } from './steam';
 
+export const AUTO_SYNC_COOKIE = 'library-autosync';
+
 export async function getStoredGames(steamId: string): Promise<Game[]> {
   const user = await prisma.user.findUnique({
     where: { steamId },

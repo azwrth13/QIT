@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 import type { Game } from "../../../lib/games";
 
@@ -10,32 +10,7 @@ export const useFetchGames = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-
-  const fetchGames = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch('/api/games');
-      if (response.status === 401) { setUnauthorized(true); setGames([]); return; }
-      setUnauthorized(false);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to fetch games");
-      }
-      const data = await response.json();
-      setGames(data.games || []);
-      setLastSynced(data.lastSynced || null);
-    } catch (err) {
-      setError((err as Error).message);
-      setGames([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchGames();
-  }, [fetchGames]);
+  const autoSynced = useRef(false);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -52,6 +27,36 @@ export const useFetchGames = () => {
       setRefreshing(false);
     }
   }, []);
+
+  const fetchGames = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/games');
+      if (response.status === 401) { setUnauthorized(true); setGames([]); return; }
+      setUnauthorized(false);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to fetch games");
+      }
+      const data = await response.json();
+      setGames(data.games || []);
+      setLastSynced(data.lastSynced || null);
+      if (data.autoSync && !autoSynced.current) {
+        autoSynced.current = true;
+        void refresh();
+      }
+    } catch (err) {
+      setError((err as Error).message);
+      setGames([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [refresh]);
+
+  useEffect(() => {
+    fetchGames();
+  }, [fetchGames]);
 
   return { games, loading, error, unauthorized, lastSynced, refreshing, refresh, refetch: fetchGames };
 };

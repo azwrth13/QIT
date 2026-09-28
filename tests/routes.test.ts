@@ -52,6 +52,28 @@ describe('route authentication', () => {
   });
 });
 
+describe('post-login auto sync', () => {
+  beforeEach(async () => { cookieValues.set(SESSION_COOKIE, await createSession(steamId)); });
+  it('requests one sync after sign-in and consumes the flag', async () => {
+    cookieValues.set('library-synced', '2026-01-01T00:00:00.000Z');
+    cookieValues.set('library-autosync', '1');
+    findUnique.mockResolvedValue({ games: [{ appid: 10 }] });
+    const first = await games();
+    expect(await first.json()).toMatchObject({ autoSync: true, lastSynced: '2026-01-01T00:00:00.000Z' });
+    expect(first.cookies.get('library-autosync')).toMatchObject({ value: '', maxAge: 0 });
+    cookieValues.delete('library-autosync');
+    const second = await games();
+    expect(await second.json()).toMatchObject({ autoSync: false });
+    expect(second.cookies.get('library-autosync')).toBeUndefined();
+  });
+  it('requests a sync for a never-synced empty library but not for a synced empty one', async () => {
+    findUnique.mockResolvedValue({ games: [] });
+    expect(await (await games()).json()).toMatchObject({ autoSync: true, lastSynced: null });
+    cookieValues.set('library-synced', '2026-01-01T00:00:00.000Z');
+    expect(await (await games()).json()).toMatchObject({ autoSync: false });
+  });
+});
+
 describe('public profile search', () => {
   const searchRequest = (q: string, ip: string) => new Request(`https://qit.example/api/steam/search?${new URLSearchParams({ q })}`, { headers: { 'x-forwarded-for': ip } });
   const player = (id: string) => Response.json({ response: { players: [{ steamid: id, personaname: 'Player', profileurl: `https://steamcommunity.com/profiles/${id}` }] } });
@@ -163,6 +185,8 @@ describe('OpenID callback route', () => {
     const session = response.cookies.get(SESSION_COOKIE);
     expect(await verifySession(session?.value)).toBe(steamId);
     expect(session).toMatchObject({ httpOnly: true, sameSite: 'lax', path: '/' });
+    expect(response.cookies.get('library-autosync')?.value).toBe('1');
+    expect(response.cookies.get('library-synced')).toBeUndefined();
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(OPENID_ENDPOINT);
     const verificationBody = vi.mocked(fetch).mock.calls[0][1]?.body;
     expect(verificationBody).toBeInstanceOf(URLSearchParams);

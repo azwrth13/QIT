@@ -61,7 +61,12 @@ export default function Library() {
           <a href="/api/auth/steam-login" className="inline-block bg-neobrutal-blue border-4 border-black px-4 py-2 font-bold text-black">Sign In with Steam</a>
         </BrowserWindow>
       )}
-      {!unauthorized && !loading && games.length === 0 && !error && (
+      {!unauthorized && !loading && refreshing && games.length === 0 && (
+        <BrowserWindow title="SYNCING" className="mb-8">
+          <p className="text-black font-bold" role="status">Syncing your library...</p>
+        </BrowserWindow>
+      )}
+      {!unauthorized && !loading && !refreshing && games.length === 0 && !error && (
         <BrowserWindow title="NO GAMES AVAILABLE" className="mb-8">
           <p className="text-black font-bold">No games are synced yet. Select Refresh library below. If Steam still shares no games, set Game details to Public in your Steam privacy settings.</p>
         </BrowserWindow>
