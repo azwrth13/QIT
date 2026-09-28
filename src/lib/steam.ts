@@ -18,9 +18,9 @@ export function steamApiUrl(path: string, params: Record<string, string>): URL {
   return url;
 }
 
-export async function steamJson<T>(url: URL, timeoutMs = 15000): Promise<T> {
+export async function steamJson<T>(url: URL, timeoutMs = 15000, acceptedStatuses: number[] = []): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
-  if (!response.ok) throw new SteamApiError(response.status);
+  if (!response.ok && !acceptedStatuses.includes(response.status)) throw new SteamApiError(response.status);
   return response.json() as Promise<T>;
 }
 
@@ -113,6 +113,25 @@ export async function getSteamGames(steamId: string): Promise<Game[] | null> {
     appid: game.appid, name: game.name, img_icon_url: game.img_icon_url || '',
     playtime_forever: game.playtime_forever || 0,
   }));
+}
+
+export type AchievementProgress = { unlocked: number; total: number; percent: number };
+
+export async function getAchievementProgress(steamId: string, appid: number): Promise<AchievementProgress | null> {
+  if (!isSteamId(steamId)) return null;
+  // Steam answers 400 for games without stats and 403 for private game details,
+  // both with a playerstats body whose success is false.
+  const data = await steamJson<{ playerstats?: {
+    success?: boolean;
+    achievements?: Array<{ achieved?: number }>;
+  } } | null>(steamApiUrl('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: steamId, appid: String(appid) }), undefined, [400, 403]);
+  const stats = data?.playerstats;
+  if (stats?.success === false) return null;
+  if (stats?.success !== true) throw new Error('Steam request failed');
+  if (!Array.isArray(stats.achievements) || stats.achievements.length === 0) return null;
+  const total = stats.achievements.length;
+  const unlocked = stats.achievements.filter(achievement => achievement.achieved === 1).length;
+  return { unlocked, total, percent: Math.floor((unlocked / total) * 100) };
 }
 
 export async function getPublicLibrary(steamId: string) {

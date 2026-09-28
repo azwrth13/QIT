@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSession, SESSION_COOKIE } from '../src/lib/session';
 
-const { cookieValues, getStoredGames, getLastSyncedAt, getStoredProfile, ensureUser, ownsGames, getGenresForApps } = vi.hoisted(() => ({
+const { cookieValues, getStoredGames, getLastSyncedAt, getStoredProfile, ensureUser, ownsGames, getGenresForApps, getCachedAchievementProgress } = vi.hoisted(() => ({
   cookieValues: new Map<string, string>(), getStoredGames: vi.fn(), getLastSyncedAt: vi.fn(),
-  getStoredProfile: vi.fn(), ensureUser: vi.fn(), ownsGames: vi.fn(), getGenresForApps: vi.fn(),
+  getStoredProfile: vi.fn(), ensureUser: vi.fn(), ownsGames: vi.fn(), getGenresForApps: vi.fn(), getCachedAchievementProgress: vi.fn(),
 }));
 vi.mock('next/headers', () => ({ cookies: async () => ({
   get: (name: string) => cookieValues.has(name) ? { value: cookieValues.get(name) } : undefined,
 }) }));
 vi.mock('../src/lib/library-data', () => ({ AUTO_SYNC_COOKIE: 'library-autosync', getStoredGames, getLastSyncedAt, getStoredProfile, ensureUser, ownsGames }));
 vi.mock('../src/lib/genre-cache', () => ({ getGenresForApps }));
+vi.mock('../src/lib/achievement-cache', () => ({ getCachedAchievementProgress }));
 
 import { GET as callback } from '../src/app/api/auth/steam-callback/route';
 import { verifySession } from '../src/lib/session';
@@ -21,6 +22,7 @@ import { GET as friend } from '../src/app/api/games/friend/route';
 import { GET as search } from '../src/app/api/steam/search/route';
 import { GET as friends } from '../src/app/api/steam/friends/route';
 import { POST as genres } from '../src/app/api/games/genres/route';
+import { GET as achievements } from '../src/app/api/games/achievements/route';
 
 const steamId = '76561198000000000';
 const request = (body: string) => new Request('https://qit.example/api/games/genres', { method: 'POST', body });
@@ -33,6 +35,7 @@ beforeEach(() => {
   ensureUser.mockReset();
   ownsGames.mockReset();
   getGenresForApps.mockReset();
+  getCachedAchievementProgress.mockReset();
   getStoredGames.mockResolvedValue([]);
   getLastSyncedAt.mockResolvedValue(null);
   vi.stubEnv('SESSION_SECRET', 'test-only-secret-with-at-least-32-characters');
@@ -222,6 +225,48 @@ describe('genre request validation', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ genres: { '10': ['Action'] }, successCount: 1, errorCount: 0, totalRequested: 1 });
     expect(getGenresForApps).toHaveBeenCalledWith([10]);
+  });
+});
+
+describe('achievement progress route', () => {
+  const achievementRequest = (appid = '10') => new Request(`https://qit.example/api/games/achievements?appid=${appid}`);
+  beforeEach(async () => {
+    cookieValues.set(SESSION_COOKIE, await createSession(steamId));
+    ownsGames.mockResolvedValue(true);
+  });
+  it('requires a verified signed-in session', async () => {
+    cookieValues.clear();
+    expect((await achievements(achievementRequest())).status).toBe(401);
+    expect(ownsGames).not.toHaveBeenCalled();
+  });
+  it('rejects invalid IDs and games outside the signed-in user library', async () => {
+    expect((await achievements(achievementRequest('1.2'))).status).toBe(400);
+    ownsGames.mockResolvedValue(false);
+    expect((await achievements(achievementRequest())).status).toBe(400);
+    expect(getCachedAchievementProgress).not.toHaveBeenCalled();
+  });
+  it('quietly returns no progress when the lookup fails', async () => {
+    getCachedAchievementProgress.mockRejectedValue(new Error('Steam request failed'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const response = await achievements(achievementRequest());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ progress: null });
+    expect(log).toHaveBeenCalledWith('Achievement lookup failed', { name: 'Error' });
+    log.mockRestore();
+  });
+  it.each(['no achievements', 'private stats'])('quietly returns no progress for %s', async () => {
+    getCachedAchievementProgress.mockResolvedValue(null);
+    const response = await achievements(achievementRequest());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ progress: null });
+  });
+  it('returns mapped progress for an owned game', async () => {
+    getCachedAchievementProgress.mockResolvedValue({ unlocked: 6, total: 10, percent: 60 });
+    const response = await achievements(achievementRequest());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ progress: { unlocked: 6, total: 10, percent: 60 } });
+    expect(ownsGames).toHaveBeenCalledWith(steamId, [10]);
+    expect(getCachedAchievementProgress).toHaveBeenCalledWith(steamId, 10);
   });
 });
 
