@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;700;900&display=swap');
 
 :root {
   --background: #FFFEF7;
@@ -19,7 +18,7 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-space-grotesk), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* Neobrutalism utility classes */
@@ -77,7 +76,7 @@ html {
 
 /* Pixelated font for headings */
 .pixel-font {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-press-start), monospace;
   font-size: 0.875rem;
   line-height: 1.5;
   letter-spacing: 0.05em;
@@ -161,22 +160,6 @@ html {
   padding: 8px;
 }
 
-/* NextUI Dropdown Menu - Neobrutal styling */
-[data-slot="base"] {
-  background-color: white !important;
-  border: 4px solid var(--neobrutal-border) !important;
-  box-shadow: var(--neobrutal-shadow) !important;
-  border-radius: 0 !important;
-}
-
-[data-slot="base"] [data-slot="base"] {
-  background-color: white !important;
-}
-
-[data-hover="true"] {
-  background-color: var(--neobrutal-yellow) !important;
-}
-
-[data-focus="true"] {
-  background-color: var(--neobrutal-yellow) !important;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }

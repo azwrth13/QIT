@@ -1,6 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import BrowserWindow from '../../components/BrowserWindow';
 
 interface HelpPopoutProps {
@@ -9,11 +10,16 @@ interface HelpPopoutProps {
 }
 
 export default function HelpPopout({ isOpen, onClose }: HelpPopoutProps) {
-  if (!isOpen) return null;
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (isOpen && !dialog?.open) dialog?.showModal();
+    if (!isOpen && dialog?.open) dialog.close();
+  }, [isOpen]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+    <dialog ref={ref} onClose={onClose} onCancel={onClose} aria-label="How to use QIT" className="w-full max-w-3xl p-0 bg-transparent backdrop:bg-black/50">
+      <div className="w-full max-h-[90vh] overflow-y-auto">
         <BrowserWindow title="HOW TO USE QIT">
           <div className="space-y-6">
             {/* Filter List Section */}
@@ -90,7 +96,7 @@ export default function HelpPopout({ isOpen, onClose }: HelpPopoutProps) {
           </div>
         </BrowserWindow>
       </div>
-    </div>
+    </dialog>
   );
 }
 

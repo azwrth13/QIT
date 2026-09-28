@@ -1,6 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import BrowserWindow from '../../components/BrowserWindow';
 
 interface LogoutConfirmModalProps {
@@ -11,11 +12,16 @@ interface LogoutConfirmModalProps {
 }
 
 export default function LogoutConfirmModal({ isOpen, onConfirm, onCancel, userName }: LogoutConfirmModalProps) {
-  if (!isOpen) return null;
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (isOpen && !dialog?.open) dialog?.showModal();
+    if (!isOpen && dialog?.open) dialog.close();
+  }, [isOpen]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="w-full max-w-md">
+    <dialog ref={ref} onClose={onCancel} onCancel={onCancel} aria-label="Confirm logout" className="w-full max-w-md p-0 bg-transparent backdrop:bg-black/50">
+      <div className="w-full">
         <BrowserWindow title="CONFIRM LOGOUT">
           <div className="space-y-4">
             <div className="bg-neobrutal-pink border-4 border-black shadow-neobrutal p-4">
@@ -51,7 +57,7 @@ export default function LogoutConfirmModal({ isOpen, onConfirm, onCancel, userNa
           </div>
         </BrowserWindow>
       </div>
-    </div>
+    </dialog>
   );
 }
 

@@ -1,19 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getSteamId } from '@/lib/auth';
-import { isSteamId, logServerError, steamApiUrl, steamJson } from '@/lib/steam';
-import { SteamOwnedGamesResponse } from '@/types/api';
+import { getPublicLibrary, isSteamId, logServerError } from '@/lib/steam';
 
 export async function GET(req: Request) {
+  if (!await getSteamId()) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  const steamId = new URL(req.url).searchParams.get('steamid');
+  if (!isSteamId(steamId)) return NextResponse.json({ error: 'Enter a valid Steam ID.' }, { status: 400 });
   try {
-    if (!await getSteamId()) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    const friendSteamId = new URL(req.url).searchParams.get('steamid');
-    if (!isSteamId(friendSteamId)) return NextResponse.json({ error: 'Invalid friend Steam ID' }, { status: 400 });
-    const data = await steamJson<SteamOwnedGamesResponse>(steamApiUrl('/IPlayerService/GetOwnedGames/v1/', { steamid: friendSteamId, include_appinfo: 'true' }));
-    return NextResponse.json({ games: (data.response.games || []).map(game => ({
-      appid: game.appid, name: game.name, img_icon_url: game.img_icon_url, playtime_forever: game.playtime_forever,
-    })) });
+    const library = await getPublicLibrary(steamId);
+    if (library.state === 'unknown') return NextResponse.json({ error: 'Steam profile not found.' }, { status: 404 });
+    if (library.state === 'private') return NextResponse.json({ error: 'This friend’s game details are private. Ask them to set Game details to Public in Steam.' }, { status: 403 });
+    return NextResponse.json({ games: library.games });
   } catch (error) {
-    logServerError('Error fetching friend games', error);
-    return NextResponse.json({ error: 'Error fetching friend games' }, { status: 500 });
+    logServerError('Friend library request failed', error);
+    return NextResponse.json({ error: 'Could not load this friend’s library. Please try again.' }, { status: 502 });
   }
 }

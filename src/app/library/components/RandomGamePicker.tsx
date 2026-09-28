@@ -2,7 +2,7 @@
 
 import { useState, memo, useCallback } from 'react';
 import Image from 'next/image';
-import { Game } from "../hooks/useFetchGames";
+import { Game, formatPlaytime, pickGame } from "../../../lib/games";
 import { Dice6, X } from 'lucide-react';
 import BrowserWindow from '../../components/BrowserWindow';
 
@@ -12,40 +12,20 @@ interface RandomGamePickerProps {
 
 const RandomGamePicker = memo(function RandomGamePicker({ games }: RandomGamePickerProps) {
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
-  const [isPicking, setIsPicking] = useState(false);
-
-  const formatPlaytime = useCallback((minutes: number | undefined): string => {
-    if (!minutes || minutes <= 0) return "0h 0m";
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return `${hours}h ${remainingMinutes}m`;
-  }, []);
 
   const pickRandomGame = useCallback(() => {
-    if (games.length === 0) {
-      setSelectedGame(null);
-      return;
-    }
-
-    setIsPicking(true);
-    
-    // Add a small delay for visual feedback
-    setTimeout(() => {
-      const randomIndex = Math.floor(Math.random() * games.length);
-      setSelectedGame(games[randomIndex]);
-      setIsPicking(false);
-    }, 500);
+    setSelectedGame(pickGame(games));
   }, [games]);
 
   return (
     <BrowserWindow title="RANDOM GAME PICKER">
       <button
         onClick={pickRandomGame}
-        disabled={games.length === 0 || isPicking}
+        disabled={games.length === 0}
         className="w-full bg-neobrutal-yellow hover:bg-neobrutal-pink disabled:bg-gray-300 disabled:cursor-not-allowed border-4 border-black shadow-neobrutal text-black font-bold py-3 px-4 transition-colors flex items-center justify-center gap-2"
       >
         <Dice6 className="w-5 h-5" />
-        {isPicking ? 'Picking...' : 'Pick a Random Game'}
+        Pick a Random Game
       </button>
 
       {games.length === 0 && (
@@ -55,13 +35,13 @@ const RandomGamePicker = memo(function RandomGamePicker({ games }: RandomGamePic
       )}
 
       {/* Selected Game Display */}
-      {selectedGame && (
+      {selectedGame && games.some(game => game.appid === selectedGame.appid) && (
         <div className="mt-6 p-4 bg-neobrutal-green border-4 border-black shadow-neobrutal animate-in fade-in slide-in-from-bottom-4">
           <div className="flex items-start justify-between mb-3">
             <h4 className="text-lg font-bold text-black">Your Random Game:</h4>
             <button
               onClick={() => setSelectedGame(null)}
-              className="text-black hover:text-neobrutal-pink transition-colors"
+              className="text-black hover:text-black transition-colors"
               aria-label="Close"
             >
               <X className="w-5 h-5" />
@@ -95,7 +75,7 @@ const RandomGamePicker = memo(function RandomGamePicker({ games }: RandomGamePic
                 href={`https://store.steampowered.com/app/${selectedGame.appid}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block mt-2 text-sm text-black hover:text-neobrutal-pink transition-colors font-bold underline"
+                className="inline-block mt-2 text-sm text-black hover:text-black transition-colors font-bold underline"
               >
                 View on Steam →
               </a>

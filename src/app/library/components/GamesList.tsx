@@ -4,9 +4,9 @@
 
 import { useState, useMemo, memo, useCallback, useEffect } from 'react';
 import Image from 'next/image';
+import VirtualGameGrid from './VirtualGameGrid';
 import { SearchIcon, X, UserX } from 'lucide-react';
-import { Game } from "../hooks/useFetchGames";
-import { fetchGenreBatches } from '@/lib/genres';
+import { Game } from "../../../lib/games";
 
 interface GameListProps {
   games: Game[];
@@ -33,13 +33,14 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
   const [searchingFriend, setSearchingFriend] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(null);
   const [friendGames, setFriendGames] = useState<Game[]>([]);
-  const [loadingFriendGames, setLoadingFriendGames] = useState(false);
+  const [friendError, setFriendError] = useState<string | null>(null);
 
   // Fetch genres for games
   useEffect(() => {
     let isCancelled = false;
 
     const fetchGenres = async () => {
+      setGamesWithGenres(games);
       if (games.length === 0) return;
       
       setLoadingGenres(true);
@@ -62,8 +63,28 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
       }
 
       try {
-        const data = await fetchGenreBatches(gamesNeedingGenres.map(g => g.appid));
-        const genresMap = data.genres;
+        // Fetch genres from server-side API route
+        const appids = gamesNeedingGenres.map(g => g.appid);
+        const response = await fetch('/api/games/genres', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ appids }),
+        });
+
+        if (isCancelled) return;
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          // Log summary error instead of individual errors
+          console.error('Failed to fetch genres:', errorData.error || 'Unknown error');
+          setLoadingGenres(false);
+          return;
+        }
+
+        const data = await response.json();
+        const genresMap: Record<number, string[]> = data.genres || {};
 
         if (isCancelled) return;
 
@@ -119,6 +140,9 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
     if (!friendSearchQuery.trim()) return;
 
     setSearchingFriend(true);
+    setFriendError(null);
+    setSelectedFriend(null);
+    setFriendGames([]);
     try {
       const response = await fetch(`/api/steam/search?q=${encodeURIComponent(friendSearchQuery)}`);
       const data = await response.json();
@@ -127,28 +151,17 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
         throw new Error(data.error || 'Failed to search friend');
       }
 
-      setSelectedFriend({
-        steamId: data.steamId,
-        personaName: data.personaName,
-        avatarMedium: data.avatarMedium,
-      });
-
-      // Fetch friend's games
-      setLoadingFriendGames(true);
       const gamesResponse = await fetch(`/api/games/friend?steamid=${data.steamId}`);
       const gamesData = await gamesResponse.json();
-
-      if (!gamesResponse.ok) {
-        throw new Error(gamesData.error || 'Failed to fetch friend games');
-      }
-
-      setFriendGames(gamesData.games || []);
+      if (!gamesResponse.ok) throw new Error(gamesData.error || 'Failed to fetch friend games');
+      if (!gamesData.games?.length) throw new Error('This friend has no public games. Check their Steam Game details privacy setting.');
+      setFriendGames(gamesData.games);
+      setSelectedFriend({ steamId: data.steamId, personaName: data.personaName, avatarMedium: data.avatarMedium });
     } catch (error) {
       console.error('Error searching friend:', error);
-      alert((error as Error).message || 'Failed to search for friend');
+      setFriendError((error as Error).message || 'Failed to search for friend');
     } finally {
       setSearchingFriend(false);
-      setLoadingFriendGames(false);
     }
   }, [friendSearchQuery]);
 
@@ -156,14 +169,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
     setSelectedFriend(null);
     setFriendGames([]);
     setFriendSearchQuery('');
-  }, []);
-
-  // Helper function to convert minutes to hours and minutes (memoized)
-  const formatPlaytime = useCallback((minutes: number | undefined): string => {
-    if (!minutes || minutes <= 0) return "0h 0m";
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return `${hours}h ${remainingMinutes}m`;
+    setFriendError(null);
   }, []);
 
   // Filter and sort games
@@ -171,7 +177,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
     let filtered = gamesWithGenres;
 
     // Filter by friend's games (common games only)
-    if (selectedFriend && friendGames.length > 0) {
+    if (selectedFriend) {
       const friendAppIds = new Set(friendGames.map(g => g.appid));
       filtered = filtered.filter(game => friendAppIds.has(game.appid));
     }
@@ -228,6 +234,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
           <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black w-5 h-5" />
           <input
             type="text"
+            aria-label="Search games"
             placeholder="Search games..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -235,8 +242,9 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
           />
           {searchQuery && (
             <button
+              aria-label="Clear game search"
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-black hover:text-neobrutal-pink"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-black hover:text-black"
             >
               <X className="w-5 h-5" />
             </button>
@@ -250,6 +258,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
               <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black w-5 h-5" />
               <input
                 type="text"
+                aria-label="Steam friend ID or profile URL"
                 placeholder="Search friend by Steam ID or URL..."
                 value={friendSearchQuery}
                 onChange={(e) => setFriendSearchQuery(e.target.value)}
@@ -259,8 +268,9 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
               />
               {friendSearchQuery && !selectedFriend && (
                 <button
+                  aria-label="Clear friend search"
                   onClick={() => setFriendSearchQuery('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-black hover:text-neobrutal-pink"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-black hover:text-black"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -277,6 +287,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
             )}
           </div>
           
+          {friendError && <p role="alert" className="text-black font-bold bg-neobrutal-pink p-2 border-2 border-black">{friendError}</p>}
           {selectedFriend && (
             <div className="flex items-center gap-2 p-2 bg-neobrutal-green border-4 border-black">
               <Image
@@ -288,11 +299,11 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
               />
               <span className="flex-1 text-black font-bold text-sm">
                 Showing games in common with {selectedFriend.personaName}
-                {loadingFriendGames && ' (loading...)'}
               </span>
               <button
+                aria-label="Clear friend filter"
                 onClick={clearFriend}
-                className="text-black hover:text-neobrutal-pink transition-colors"
+                className="text-black hover:text-black transition-colors"
                 title="Clear friend filter"
               >
                 <UserX className="w-5 h-5" />
@@ -304,6 +315,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
         {/* Filter and Sort Controls */}
         <div className="flex flex-wrap gap-3">
           <select
+            aria-label="Filter by playtime"
             value={filterBy}
             onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
             className="neobrutal-select px-3 py-2 border-4 border-black bg-white text-black focus:outline-none focus:bg-neobrutal-yellow font-bold"
@@ -314,6 +326,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
           </select>
 
           <select
+            aria-label="Filter by genre"
             value={selectedGenre}
             onChange={(e) => setSelectedGenre(e.target.value)}
             disabled={loadingGenres || genres.length === 0}
@@ -326,6 +339,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
           </select>
 
           <select
+            aria-label="Sort games"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
             className="neobrutal-select px-3 py-2 border-4 border-black bg-white text-black focus:outline-none focus:bg-neobrutal-yellow font-bold"
@@ -342,32 +356,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
 
       {/* Games Grid */}
       {filteredAndSortedGames.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[600px] overflow-y-auto">
-          {filteredAndSortedGames.map((game) => (
-            <div key={game.appid} className="text-center p-3 bg-neobrutal-blue border-4 border-black shadow-neobrutal-sm hover:bg-neobrutal-green transition-colors">
-              {game.img_icon_url ? (
-                <div className="w-12 h-12 mx-auto mb-2 relative border-2 border-black">
-                  <Image
-                    src={`https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg`}
-                    alt={`${game.name} icon`}
-                    fill
-                    className="object-contain pixelated"
-                    sizes="48px"
-                    unoptimized
-                  />
-                </div>
-              ) : (
-                <div className="w-12 h-12 mx-auto mb-2 bg-neobrutal-pink border-2 border-black flex items-center justify-center">
-                  <span className="text-black text-xs font-bold">No Image</span>
-                </div>
-              )}
-              <p className="font-bold text-sm mb-1 line-clamp-2 text-black">{game.name}</p>
-              <p className="text-xs text-black font-bold">
-                {formatPlaytime(game.playtime_forever)}
-              </p>
-            </div>
-          ))}
-        </div>
+        <VirtualGameGrid games={filteredAndSortedGames} />
       ) : (
         <div className="text-center py-8">
           <p className="text-black font-bold">
