@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSteamId } from '@/lib/auth';
 import { getStoredGames } from '@/lib/library-data';
 import { logServerError, makeRoom } from '@/lib/steam';
+import { validateAppIds } from '@/lib/genres';
 
 const genreCache = new Map<number, { genres: string[]; expires: number }>();
 const day = 24 * 60 * 60 * 1000;
@@ -11,12 +12,12 @@ const GENRE_CACHE_LIMIT = 20000;
 export async function POST(req: Request) {
   const steamId = await getSteamId();
   if (!steamId) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  let appids: unknown;
-  try { ({ appids } = await req.json()); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
-  if (!Array.isArray(appids) || appids.length === 0 || appids.length > GENRE_BATCH_SIZE || appids.some(id => !Number.isSafeInteger(id) || id <= 0)) {
-    return NextResponse.json({ error: `Enter up to ${GENRE_BATCH_SIZE} valid app IDs.` }, { status: 400 });
+  let body: unknown;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
+  const ids = validateAppIds(body);
+  if (!ids || ids.length > GENRE_BATCH_SIZE) {
+    return NextResponse.json({ error: `Enter up to ${GENRE_BATCH_SIZE} unique valid app IDs.` }, { status: 400 });
   }
-  const ids = [...new Set(appids as number[])];
   try {
     const owned = new Set((await getStoredGames(steamId)).map(game => game.appid));
     if (ids.some(id => !owned.has(id))) return NextResponse.json({ error: 'App IDs must belong to your library' }, { status: 400 });
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
   for (let start = 0; start < missing.length; start += 4) {
     await Promise.all(missing.slice(start, start + 4).map(async id => {
       try {
-        const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${id}&cc=us`, { signal: AbortSignal.timeout(10000), next: { revalidate: 86400 } });
+        const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${id}&cc=us`, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
         if (!response.ok) throw new Error('Store request failed');
         const data = await response.json();
         const list = !data[id]?.success ? [] : (data[id].data?.genres || []).map((entry: { description: string }) => entry.description).filter(Boolean);

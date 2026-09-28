@@ -1,4 +1,4 @@
-export const MAX_GENRE_APPIDS = 500;
+export const MAX_GENRE_APPIDS = 40;
 
 export function validateAppIds(body: unknown): number[] | null {
   if (!body || typeof body !== 'object' || !('appids' in body)) return null;

@@ -10,7 +10,7 @@ describe('fetchGenreBatches', () => {
     });
     const result = await fetchGenreBatches(appids, fetcher as typeof fetch);
     const batches = fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).appids as number[]);
-    expect(batches.map(batch => batch.length)).toEqual([MAX_GENRE_APPIDS, MAX_GENRE_APPIDS, 201]);
+    expect(batches.map(batch => batch.length)).toEqual([...Array(30).fill(MAX_GENRE_APPIDS), 1]);
     expect(batches.flat()).toEqual(appids);
     expect(Object.keys(result.genres)).toHaveLength(1_201);
     expect(result).toMatchObject({ successCount: 1_201, errorCount: 0 });

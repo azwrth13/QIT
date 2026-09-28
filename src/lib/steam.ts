@@ -140,12 +140,6 @@ export function makeRoom<K, T>(map: Map<K, T>, expiry: (value: T) => number, now
   }
 }
 
-export function clientIpFromForwardedFor(forwardedFor: string | null, trustedProxyHops = Number(process.env.TRUSTED_PROXY_HOPS) || 2) {
-  const entries = (forwardedFor || '').split(',').map(entry => entry.trim()).filter(Boolean);
-  if (entries.length === 0) return 'unknown';
-  return entries[Math.max(0, entries.length - trustedProxyHops)];
-}
-
 const publicMessages = {
   public: null,
   private: 'This library is private or Steam is not sharing its games. The owner can set Game details to Public in Steam privacy settings.',

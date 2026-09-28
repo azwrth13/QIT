@@ -32,7 +32,7 @@ export default function PublicLibraryPage({ params }: { params: Promise<{ steami
     {library?.message && <p className="text-black font-bold">{library.message}</p>}
     {library?.state === 'public' && library.games.length === 0 && <p className="text-black font-bold">This public library has no games.</p>}
     {library?.state === 'public' && library.games.length > 0 && <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2"><GameList games={library.games} onFilteredGamesChange={setFiltered} /></div>
+      <div className="lg:col-span-2"><GameList publicView games={library.games} onFilteredGamesChange={setFiltered} /></div>
       <RandomGamePicker games={filtered} />
     </div>}
   </div>;

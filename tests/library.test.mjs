@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pickGame } from '../src/lib/games.ts';
-import { clientIpFromForwardedFor, getPublicLibrary, getPublicLibraryResponse, makeRoom } from '../src/lib/steam.ts';
+import { getPublicLibrary, getPublicLibraryResponse, makeRoom } from '../src/lib/steam.ts';
 
 test('picker never falls back to full library when filters have no matches', () => {
   const allGames = [{ appid: 1, name: 'One' }];
@@ -82,15 +82,6 @@ test('public library route validates ids, caches per Steam ID, and rate limits p
     if (previousKey === undefined) delete process.env.STEAM_API_KEY;
     else process.env.STEAM_API_KEY = previousKey;
   }
-});
-
-test('client IP ignores client-supplied X-Forwarded-For entries', () => {
-  assert.equal(clientIpFromForwardedFor('203.0.113.9'), '203.0.113.9');
-  assert.equal(clientIpFromForwardedFor('203.0.113.9, 10.0.0.1'), '203.0.113.9');
-  assert.equal(clientIpFromForwardedFor('1.1.1.1, 203.0.113.9, 10.0.0.1'), '203.0.113.9');
-  assert.equal(clientIpFromForwardedFor('1.1.1.1, 203.0.113.9', 1), '203.0.113.9');
-  assert.equal(clientIpFromForwardedFor(null), 'unknown');
-  assert.equal(clientIpFromForwardedFor(' , '), 'unknown');
 });
 
 test('concurrent public library lookups for one Steam ID share a single Steam request', async () => {

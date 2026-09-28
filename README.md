@@ -12,7 +12,7 @@ Your Steam Game details must be Public to show owned games. Steam sign-in reads 
 
 Sessions use signed and encrypted HTTP-only cookies and last seven days. Existing unsigned Steam ID cookies are not accepted; users must sign in again. Rotating `SESSION_SECRET` invalidates current sessions. Logout clears the session cookie.
 
-The friend and genre APIs require a valid session. Profile search is public and accepts a 17-digit Steam ID, vanity name, or Steam profile URL. It is limited to 20 requests per minute per client IP and caches responses briefly. `TRUSTED_PROXY_HOPS` selects the `X-Forwarded-For` entry counted from the right (default 2 for Firebase App Hosting's Google load balancer); shorter headers use their leftmost entry and missing headers fall back to `X-Real-IP`. Steam request failures log only safe error metadata.
+The friend and genre APIs require a valid session. Genre requests accept up to 40 unique app IDs owned by the signed-in user; larger libraries load in batches. Profile search is public and accepts a 17-digit Steam ID, vanity name, or Steam profile URL. It is limited to 20 requests per minute per client IP and caches responses briefly. `TRUSTED_PROXY_HOPS` selects the `X-Forwarded-For` entry counted from the right (default 2 for Firebase App Hosting's Google load balancer); shorter headers use their leftmost entry and missing headers fall back to `X-Real-IP`. Steam request failures log only safe error metadata.
 
 ## Checks
 

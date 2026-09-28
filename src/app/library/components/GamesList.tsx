@@ -13,6 +13,7 @@ const GENRE_BATCH_SIZE = 40;
 interface GameListProps {
   games: Game[];
   onFilteredGamesChange?: (filteredGames: Game[]) => void;
+  publicView?: boolean;
 }
 
 interface FriendProfile {
@@ -21,7 +22,7 @@ interface FriendProfile {
   avatarMedium: string;
 }
 
-const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameListProps) {
+const GameList = memo(function GameList({ games, onFilteredGamesChange, publicView = false }: GameListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'playtime'>('name');
   const [filterBy, setFilterBy] = useState<'all' | 'played' | 'unplayed'>('all');
@@ -51,7 +52,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
     const fetchGenres = async () => {
       const genresMap: Record<number, string[]> = {};
       applyGenres(genresMap);
-      const appids = games.filter(g => !g.genres || g.genres.length === 0).map(g => g.appid);
+      const appids = publicView ? [] : games.filter(g => !g.genres || g.genres.length === 0).map(g => g.appid);
       let errorCount = 0;
       for (let start = 0; start < appids.length && !isCancelled; start += GENRE_BATCH_SIZE) {
         const batch = appids.slice(start, start + GENRE_BATCH_SIZE);
@@ -80,7 +81,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
     return () => {
       isCancelled = true;
     };
-  }, [games]);
+  }, [games, publicView]);
 
   // Search for friend
   const handleFriendSearch = useCallback(async () => {
@@ -199,7 +200,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
         </div>
 
         {/* Friend Search */}
-        <div className="space-y-2">
+        {!publicView && <div className="space-y-2">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black w-5 h-5" />
@@ -257,7 +258,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
               </button>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Filter and Sort Controls */}
         <div className="flex flex-wrap gap-3">
@@ -272,7 +273,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
             <option value="unplayed">Unplayed</option>
           </select>
 
-          <select
+          {!publicView && <select
             aria-label="Filter by genre"
             value={selectedGenre}
             onChange={(e) => setSelectedGenre(e.target.value)}
@@ -283,7 +284,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange }: GameLi
             {genres.map((genre) => (
               <option key={genre} value={genre}>{genre}</option>
             ))}
-          </select>
+          </select>}
 
           <select
             aria-label="Sort games"
