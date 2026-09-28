@@ -8,6 +8,7 @@ import RandomGamePicker from "./components/RandomGamePicker";
 import LoadingSkeleton from "./components/LoadingSkeleton";
 import BrowserWindow from "../components/BrowserWindow";
 import HelpPopout from "./components/HelpPopout";
+import LibraryStatsCard from "./components/LibraryStatsCard";
 
 export default function Library() {
   const { games, loading, error, unauthorized, lastSynced, refreshing, refresh } = useFetchGames();
@@ -100,6 +101,7 @@ export default function Library() {
       )}
 
       {/* Game Filters and Game List */}
+      {!loading && !unauthorized && games.length > 0 && <LibraryStatsCard games={games} />}
       {!loading && !unauthorized && (
         <div className="mb-6 flex flex-wrap items-center gap-4">
           <button onClick={refresh} disabled={refreshing} className="bg-neobrutal-green border-4 border-black shadow-neobrutal text-black font-bold px-4 py-2 disabled:opacity-50">{refreshing ? 'Refreshing...' : 'Refresh library'}</button>
