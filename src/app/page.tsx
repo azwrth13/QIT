@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { SearchIcon, Loader2, ExternalLink, User } from 'lucide-react';
 import Image from 'next/image';
 import BrowserWindow from './components/BrowserWindow';
@@ -14,6 +14,8 @@ interface SteamProfile {
 }
 
 export default function Home() {
+  const [loginError, setLoginError] = useState<string | null>(null);
+  useEffect(() => { setLoginError(new URLSearchParams(window.location.search).get('login_error')); }, []);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +114,7 @@ export default function Home() {
             <div className="relative">
               <input
                 type="text"
+                aria-label="Steam ID or profile URL"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Steam ID or Profile URL (e.g., 76561198000000000 or steamcommunity.com/id/username)"
@@ -126,6 +129,7 @@ export default function Home() {
             </div>
           </form>
 
+          {loginError && <div role="alert" className="mb-6 p-4 bg-neobrutal-pink border-4 border-black text-black font-bold">Steam sign-in failed ({loginError.replaceAll('_', ' ')}). Please try again.</div>}
           {/* Error Message */}
           {error && (
             <div className="mb-6 p-4 bg-neobrutal-pink border-4 border-black shadow-neobrutal">
@@ -163,7 +167,7 @@ export default function Home() {
                   View Profile
                 </a>
                 <a
-                  href={`/library?steamid=${profile.steamId}`}
+                  href={`/library/${profile.steamId}`}
                   className="flex-1 flex items-center justify-center gap-2 bg-neobrutal-yellow hover:bg-neobrutal-pink border-4 border-black shadow-neobrutal text-black font-bold py-2 px-4 transition-colors"
                 >
                   <User className="w-4 h-4" />
@@ -205,7 +209,7 @@ export default function Home() {
                   <div className="bg-white border-2 border-black p-3">
                     <h5 className="font-bold text-black text-sm mb-1">⏱️ Time</h5>
                     <p className="text-xs text-black font-bold">
-                      <strong>~30 seconds</strong> - Quick Steam sign-in, instant library access
+                      <strong>Quick setup</strong> - Sign in with Steam, then refresh your library
                     </p>
                   </div>
                   
@@ -213,7 +217,7 @@ export default function Home() {
                   <div className="bg-white border-2 border-black p-3">
                     <h5 className="font-bold text-black text-sm mb-1">🔒 Privacy</h5>
                     <p className="text-xs text-black font-bold">
-                      <strong>Secure OpenID</strong> - Only public profile & game library accessed
+                      <strong>Secure OpenID</strong> - Reads your public profile and game details
                     </p>
                   </div>
                   
@@ -228,8 +232,7 @@ export default function Home() {
                 
                 <div className="mt-4 pt-3 border-t-2 border-black">
                   <p className="text-xs text-black font-bold">
-                    <strong>What we access:</strong> Your public Steam profile (username, avatar) and game library. 
-                    We do NOT access messages, friends list, payment info, or any private data.
+                    <strong>What we access:</strong> Your Steam profile (username and avatar) and the game details Steam makes public. Signed-in libraries are synced to QIT storage; we do not access messages, payment details, or private game details.
                   </p>
                 </div>
               </div>

@@ -7,7 +7,7 @@ const { cookieValues, findUnique, upsert } = vi.hoisted(() => ({
 vi.mock('next/headers', () => ({ cookies: async () => ({
   get: (name: string) => cookieValues.has(name) ? { value: cookieValues.get(name) } : undefined,
 }) }));
-vi.mock('../src/app/library/prisma', () => ({ default: { user: { findUnique, upsert } } }));
+vi.mock('../src/lib/prisma', () => ({ default: { user: { findUnique, upsert } } }));
 
 import { GET as callback } from '../src/app/api/auth/steam-callback/route';
 import { verifySession } from '../src/lib/session';
@@ -48,7 +48,29 @@ describe('route authentication', () => {
     findUnique.mockResolvedValue({ games: [{ appid: 10 }] });
     const response = await games();
     expect(response.status).toBe(200);
-    expect(findUnique).toHaveBeenCalledWith({ where: { steamId }, include: { games: true } });
+    expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { steamId } }));
+  });
+});
+
+describe('post-login auto sync', () => {
+  beforeEach(async () => { cookieValues.set(SESSION_COOKIE, await createSession(steamId)); });
+  it('requests one sync after sign-in and consumes the flag', async () => {
+    cookieValues.set('library-synced', '2026-01-01T00:00:00.000Z');
+    cookieValues.set('library-autosync', '1');
+    findUnique.mockResolvedValue({ games: [{ appid: 10 }] });
+    const first = await games();
+    expect(await first.json()).toMatchObject({ autoSync: true, lastSynced: '2026-01-01T00:00:00.000Z' });
+    expect(first.cookies.get('library-autosync')).toMatchObject({ value: '', maxAge: 0 });
+    cookieValues.delete('library-autosync');
+    const second = await games();
+    expect(await second.json()).toMatchObject({ autoSync: false });
+    expect(second.cookies.get('library-autosync')).toBeUndefined();
+  });
+  it('requests a sync for a never-synced empty library but not for a synced empty one', async () => {
+    findUnique.mockResolvedValue({ games: [] });
+    expect(await (await games()).json()).toMatchObject({ autoSync: true, lastSynced: null });
+    cookieValues.set('library-synced', '2026-01-01T00:00:00.000Z');
+    expect(await (await games()).json()).toMatchObject({ autoSync: false });
   });
 });
 
@@ -113,7 +135,7 @@ describe('genre request validation', () => {
   });
   it('fetches genres for an owned game', async () => {
     findUnique.mockResolvedValue({ games: [{ appid: 10 }] });
-    vi.mocked(fetch).mockResolvedValue(Response.json({ '10': { data: { genres: [{ description: 'Action' }] } } }));
+    vi.mocked(fetch).mockResolvedValue(Response.json({ '10': { success: true, data: { genres: [{ description: 'Action' }] } } }));
     const response = await genres(request('{"appids":[10]}'));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ genres: { '10': ['Action'] }, successCount: 1, errorCount: 0, totalRequested: 1 });
@@ -138,22 +160,24 @@ describe('OpenID callback route', () => {
     vi.stubEnv('STEAM_API_KEY', 'test-key');
   });
   it('rejects another site assertion before verification', async () => {
-    expect((await callback(callbackRequest('https://other.example/callback'))).status).toBe(400);
+    const response = await callback(callbackRequest('https://other.example/callback'));
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toContain('login_error=invalid_steam_id');
     expect(fetch).not.toHaveBeenCalled();
     expect(upsert).not.toHaveBeenCalled();
   });
   it('rejects a Steam verification failure without issuing a session', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response('is_valid:false\n'));
     const response = await callback(callbackRequest());
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toContain('login_error=verification_failed');
     expect(response.cookies.get(SESSION_COOKIE)).toBeUndefined();
     expect(upsert).not.toHaveBeenCalled();
   });
   it('issues a verifiable session only after successful Steam verification', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(new Response('ns:http://specs.openid.net/auth/2.0\nis_valid:true\n'))
-      .mockResolvedValueOnce(Response.json({ response: { players: [{ steamid: steamId, profileurl: `https://steamcommunity.com/profiles/${steamId}` }] } }))
-      .mockResolvedValueOnce(Response.json({ response: { games: [] } }));
+      .mockResolvedValueOnce(Response.json({ response: { players: [{ steamid: steamId, profileurl: `https://steamcommunity.com/profiles/${steamId}` }] } }));
     upsert.mockResolvedValue({ id: 1 });
     const response = await callback(callbackRequest());
     expect(response.status).toBe(307);
@@ -161,6 +185,8 @@ describe('OpenID callback route', () => {
     const session = response.cookies.get(SESSION_COOKIE);
     expect(await verifySession(session?.value)).toBe(steamId);
     expect(session).toMatchObject({ httpOnly: true, sameSite: 'lax', path: '/' });
+    expect(response.cookies.get('library-autosync')?.value).toBe('1');
+    expect(response.cookies.get('library-synced')).toBeUndefined();
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(OPENID_ENDPOINT);
     const verificationBody = vi.mocked(fetch).mock.calls[0][1]?.body;
     expect(verificationBody).toBeInstanceOf(URLSearchParams);

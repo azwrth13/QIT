@@ -29,8 +29,8 @@ const config: Config = {
         'neobrutal-lg': '6px 6px 0px 0px #000000',
       },
       fontFamily: {
-        'pixel': ['Press Start 2P', 'monospace'],
-        'grotesk': ['Space Grotesk', 'sans-serif'],
+        'pixel': ['var(--font-press-start)', 'monospace'],
+        'grotesk': ['var(--font-space-grotesk)', 'sans-serif'],
       },
     },
   },

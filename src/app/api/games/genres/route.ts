@@ -1,79 +1,51 @@
 import { NextResponse } from 'next/server';
 import { getSteamId } from '@/lib/auth';
-import { logServerError, steamJson } from '@/lib/steam';
-import { validateAppIds } from '@/lib/genres';
-import prisma from '../../../library/prisma';
+import { getStoredGames } from '@/lib/library-data';
+import { logServerError, makeRoom } from '@/lib/steam';
+import { MAX_GENRE_APPIDS, validateAppIds } from '@/lib/genres';
+
+const genreCache = new Map<number, { genres: string[]; expires: number }>();
+const day = 24 * 60 * 60 * 1000;
+const GENRE_CACHE_LIMIT = 20000;
 
 export async function POST(req: Request) {
-  try {
-    const steamId = await getSteamId();
-    if (!steamId) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    let body: unknown;
-    try { body = await req.json(); }
-    catch { return NextResponse.json({ error: 'Malformed JSON' }, { status: 400 }); }
-    const appids = validateAppIds(body);
-    if (!appids) return NextResponse.json({ error: 'Provide 1–500 unique positive integer appids' }, { status: 400 });
-    const user = await prisma.user.findUnique({ where: { steamId }, select: { games: { select: { appid: true } } } });
-    const owned = new Set(user?.games.map(game => game.appid));
-    if (appids.length > owned.size || appids.some(id => !owned.has(id))) {
-      return NextResponse.json({ error: 'App IDs must belong to your library' }, { status: 400 });
-    }
-
-    // Batch size for rate limiting (Steam API can handle ~20-30 requests at a time)
-    const batchSize = 20;
-    const delayBetweenBatches = 200; // milliseconds
-    const genresMap: Record<number, string[]> = {};
-    const errors: number[] = [];
-
-    // Process games in batches
-    for (let i = 0; i < appids.length; i += batchSize) {
-      const batch = appids.slice(i, i + batchSize);
-      
-      // Fetch genres for each game in the batch
-      const promises = batch.map(async (appid: number) => {
-        try {
-          const url = new URL('https://store.steampowered.com/api/appdetails');
-          url.search = new URLSearchParams({ appids: String(appid), cc: 'us' }).toString();
-          const data = await steamJson<Record<string, { data?: { genres?: { description: string }[] } }>>(url);
-          const gameData = data[appid.toString()]?.data;
-          
-          if (gameData?.genres && Array.isArray(gameData.genres)) {
-            const gameGenres = gameData.genres
-              .map((g) => g.description)
-              .filter((g: string) => g); // Filter out empty strings
-            
-            if (gameGenres.length > 0) {
-              genresMap[appid] = gameGenres;
-            }
-          }
-        } catch {
-          // Silently track errors without logging each one
-          errors.push(appid);
-        }
-      });
-
-      // Wait for all promises in the batch to complete
-      await Promise.all(promises);
-
-      // Add delay between batches to avoid rate limiting (except for the last batch)
-      if (i + batchSize < appids.length) {
-        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
-      }
-    }
-
-    // Return genres map and summary
-    return NextResponse.json({
-      genres: genresMap,
-      successCount: Object.keys(genresMap).length,
-      errorCount: errors.length,
-      totalRequested: appids.length,
-    });
-  } catch (error) {
-    logServerError('Error in genres API route', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch genres' },
-      { status: 500 }
-    );
+  const steamId = await getSteamId();
+  if (!steamId) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  let body: unknown;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
+  const ids = validateAppIds(body);
+  if (!ids) {
+    return NextResponse.json({ error: `Enter up to ${MAX_GENRE_APPIDS} unique valid app IDs.` }, { status: 400 });
   }
+  try {
+    const owned = new Set((await getStoredGames(steamId)).map(game => game.appid));
+    if (ids.some(id => !owned.has(id))) return NextResponse.json({ error: 'App IDs must belong to your library' }, { status: 400 });
+  } catch (error) {
+    logServerError('Genre ownership check failed', error);
+    return NextResponse.json({ error: 'Unable to check library ownership' }, { status: 500 });
+  }
+  const genres: Record<number, string[]> = {};
+  let errorCount = 0;
+  const missing: number[] = [];
+  for (const id of ids) {
+    const cached = genreCache.get(id);
+    if (cached && cached.expires > Date.now()) genres[id] = cached.genres;
+    else missing.push(id);
+  }
+  for (let start = 0; start < missing.length; start += 4) {
+    await Promise.all(missing.slice(start, start + 4).map(async id => {
+      try {
+        const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${id}&cc=us`, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
+        if (!response.ok) throw new Error('Store request failed');
+        const data = await response.json();
+        const list = !data[id]?.success ? [] : (data[id].data?.genres || []).map((entry: { description: string }) => entry.description).filter(Boolean);
+        genres[id] = list;
+        genreCache.delete(id);
+        makeRoom(genreCache, entry => entry.expires, Date.now(), GENRE_CACHE_LIMIT);
+        genreCache.set(id, { genres: list, expires: Date.now() + day });
+      } catch { errorCount++; }
+    }));
+    if (start + 4 < missing.length) await new Promise(resolve => setTimeout(resolve, 300));
+  }
+  return NextResponse.json({ genres, successCount: ids.length - errorCount, errorCount, totalRequested: ids.length });
 }
-

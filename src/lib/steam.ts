@@ -77,3 +77,94 @@ export function parseSteamSearch(input: string): { steamId: string } | { vanity:
   } catch { /* Invalid URL is invalid input. */ }
   return null;
 }
+
+import type { Game } from './games';
+
+export interface SteamProfile {
+  steamId: string;
+  personaName: string;
+  profileUrl: string;
+  avatarFull: string;
+  avatarMedium: string;
+  public: boolean;
+}
+
+export async function getSteamProfile(steamId: string): Promise<SteamProfile | null> {
+  if (!isSteamId(steamId)) return null;
+  const data = await steamJson<{ response: { players: Array<{
+    steamid: string; personaname: string; profileurl: string; avatarfull: string;
+    avatarmedium: string; communityvisibilitystate: number;
+  }> } }>(steamApiUrl('/ISteamUser/GetPlayerSummaries/v2/', { steamids: steamId }));
+  const player = data.response?.players?.find(player => player.steamid === steamId);
+  if (!player) return null;
+  return {
+    steamId: player.steamid, personaName: player.personaname,
+    profileUrl: player.profileurl, avatarFull: player.avatarfull,
+    avatarMedium: player.avatarmedium, public: player.communityvisibilitystate === 3,
+  };
+}
+
+export async function getSteamGames(steamId: string): Promise<Game[] | null> {
+  if (!isSteamId(steamId)) return null;
+  const data = await steamJson<{ response: { game_count?: number; games?: Game[] } }>(steamApiUrl('/IPlayerService/GetOwnedGames/v1/', { steamid: steamId, include_appinfo: 'true' }));
+  if (!data.response?.games) return data.response?.game_count === 0 ? [] : null;
+  return data.response.games.map(game => ({
+    appid: game.appid, name: game.name, img_icon_url: game.img_icon_url || '',
+    playtime_forever: game.playtime_forever || 0,
+  }));
+}
+
+export async function getPublicLibrary(steamId: string) {
+  if (!isSteamId(steamId)) return { state: 'unknown' as const, profile: null, games: [] };
+  const profile = await getSteamProfile(steamId);
+  if (!profile) return { state: 'unknown' as const, profile: null, games: [] };
+  if (!profile.public) return { state: 'private' as const, profile, games: [] };
+  const games = await getSteamGames(steamId);
+  if (games === null) return { state: 'private' as const, profile, games: [] };
+  return { state: 'public' as const, profile, games };
+}
+
+const PUBLIC_RATE_LIMIT = 20;
+const PUBLIC_RATE_WINDOW_MS = 60 * 1000;
+const PUBLIC_CACHE_MS = 5 * 60 * 1000;
+const PUBLIC_MAP_LIMIT = 1000;
+const publicRequests = new Map<string, { count: number; resetAt: number }>();
+const publicCache = new Map<string, { expiresAt: number; library: ReturnType<typeof getPublicLibrary> }>();
+
+export function makeRoom<K, T>(map: Map<K, T>, expiry: (value: T) => number, now: number, limit = PUBLIC_MAP_LIMIT) {
+  if (map.size < limit) return;
+  for (const [key, value] of map) if (expiry(value) <= now) map.delete(key);
+  for (const key of map.keys()) {
+    if (map.size < limit) break;
+    map.delete(key);
+  }
+}
+
+const publicMessages = {
+  public: null,
+  private: 'This library is private or Steam is not sharing its games. The owner can set Game details to Public in Steam privacy settings.',
+  unknown: 'Steam profile not found. Check the Steam ID and try again.',
+};
+
+export async function getPublicLibraryResponse(steamId: string, clientIp: string, now = Date.now()) {
+  if (!/^\d{17}$/.test(steamId)) return { status: 400, body: { error: 'Steam ID must be exactly 17 digits.' } };
+  const bucket = publicRequests.get(clientIp);
+  if (!bucket || bucket.resetAt <= now) {
+    publicRequests.delete(clientIp);
+    makeRoom(publicRequests, entry => entry.resetAt, now);
+    publicRequests.set(clientIp, { count: 1, resetAt: now + PUBLIC_RATE_WINDOW_MS });
+  } else if (bucket.count >= PUBLIC_RATE_LIMIT) {
+    return { status: 429, body: { error: 'Too many requests. Please wait a minute and try again.' }, retryAfter: Math.ceil((bucket.resetAt - now) / 1000) };
+  } else bucket.count++;
+  let cached = publicCache.get(steamId);
+  if (!cached || cached.expiresAt <= now) {
+    publicCache.delete(steamId);
+    makeRoom(publicCache, entry => entry.expiresAt, now);
+    const entry = { expiresAt: now + PUBLIC_CACHE_MS, library: getPublicLibrary(steamId) };
+    entry.library.catch(() => { if (publicCache.get(steamId) === entry) publicCache.delete(steamId); });
+    publicCache.set(steamId, entry);
+    cached = entry;
+  }
+  const library = await cached.library;
+  return { status: library.state === 'unknown' ? 404 : 200, body: { ...library, message: publicMessages[library.state] } };
+}

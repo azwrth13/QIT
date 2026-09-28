@@ -1,73 +1,21 @@
-# Qit
+# QIT
 
-A Steam library randomizer built with [Next.js](https://nextjs.org) featuring a Neobrutalism design aesthetic.
+QIT picks a random game from a filtered Steam library. You can browse any public Steam library without signing in. Signing in with Steam syncs your own library once, and you can refresh it from the library page.
 
-## Getting Started
+## Local setup
 
-Use Node.js 22.13 or later. Install dependencies with `npm ci`, copy
-`.env.example` to `.env`, and supply your MySQL connection, Steam Web API key,
-and a randomly generated `SESSION_SECRET` of at least 32 characters. Never
-commit real credentials. Set `NEXT_PUBLIC_BASE_URL` to the public HTTPS origin
-in production; the Steam callback must exactly match that origin plus
-`/api/auth/steam-callback`.
+Use Node.js 22.13 or newer and MySQL. Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `STEAM_API_KEY`, `SESSION_SECRET` (at least 32 random characters), and `NEXT_PUBLIC_BASE_URL` (normally `http://localhost:3000`). The base URL must match the Steam OpenID callback origin. Never commit real credentials.
 
-Run `npx prisma generate` and apply the existing migrations with
-`npx prisma migrate deploy` against your configured database. Then start the
-development server:
+Run `npm ci`. The postinstall script generates Prisma Client. Apply existing migrations with `npx prisma migrate deploy`, then run `npm run dev` and open `http://localhost:3000`.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Your Steam Game details must be Public to show owned games. Steam sign-in reads your public profile; QIT stores your Steam ID, profile URL, and synced game details in MySQL. The public library view reads live from Steam and does not write games to the database.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Sessions use signed and encrypted HTTP-only cookies and last seven days. Existing unsigned Steam ID cookies are not accepted; users must sign in again. Rotating `SESSION_SECRET` invalidates current sessions. Logout clears the session cookie.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The friend and genre APIs require a valid session. Genre requests accept up to 40 unique app IDs owned by the signed-in user; larger libraries load in batches. Profile search is public and accepts a 17-digit Steam ID, vanity name, or Steam profile URL. Profile search and public library lookups are each limited to 20 requests per minute per client IP and cache responses briefly. `TRUSTED_PROXY_HOPS` selects the `X-Forwarded-For` entry counted from the right (default 2 for Firebase App Hosting's Google load balancer); shorter headers use their leftmost entry and missing headers fall back to `X-Real-IP`. Steam request failures log only safe error metadata.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Checks
 
-## Learn More
+Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. Pull requests and pushes to `master` run these checks plus a production dependency audit in GitHub Actions.
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Validation and sessions
-
-Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
-Pull requests and pushes to `master` run these checks plus a production
-dependency audit in GitHub Actions, without production credentials.
-
-Sessions use signed and encrypted HTTP-only cookies, last seven days, and
-require HTTPS in production. Existing unsigned Steam ID cookies are no longer
-accepted; users must sign in again. Rotating `SESSION_SECRET` invalidates all
-current sessions. Logout removes the browser cookie.
-
-The friend and genre APIs require a valid session. Profile search is public so
-signed-out visitors can look up a profile; it accepts a 17-digit Steam ID, a
-vanity name, or a Steam profile URL, is limited to 20 requests per minute per
-client IP, and caches results for one minute. The client IP is the
-`X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` positions from the right (default
-2, matching Firebase App Hosting's Google load balancer, which appends the
-client IP and then its own); shorter headers use their leftmost entry, and
-requests without the header fall back to `X-Real-IP`. Genre requests
-accept 1–500 unique positive integer app IDs owned by the caller; requests for
-larger libraries must be split into batches. Steam request failures log only
-safe error metadata, never request URLs or profile payloads.
-
-The PostCSS override keeps Next.js's transitive PostCSS dependency on a patched
-8.x release; retain it until the framework dependency itself meets that floor.
+The PostCSS override keeps Next.js's transitive PostCSS dependency on a patched 8.x release; retain it until the framework dependency itself meets that floor.

@@ -17,7 +17,7 @@ export const useFetchUserProfile = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/user/profile');
+      const response = await fetch('/api/user/profile', { cache: 'no-store' });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to fetch user profile.');
@@ -25,7 +25,7 @@ export const useFetchUserProfile = () => {
       const data = await response.json();
       setProfile(data);
     } catch (err) {
-      setError((err as Error).message);
+      if ((err as Error).message !== 'Not authenticated. Steam ID is missing.') setError((err as Error).message);
       setProfile(null);
     } finally {
       setLoading(false);
