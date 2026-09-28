@@ -140,9 +140,10 @@ function makeRoom<T>(map: Map<string, T>, expiry: (value: T) => number, now: num
   }
 }
 
-export function clientIpFromForwardedFor(forwardedFor: string | null, trustedProxyHops = Number(process.env.TRUSTED_PROXY_HOPS) || 1) {
+export function clientIpFromForwardedFor(forwardedFor: string | null, trustedProxyHops = Number(process.env.TRUSTED_PROXY_HOPS) || 2) {
   const entries = (forwardedFor || '').split(',').map(entry => entry.trim()).filter(Boolean);
-  return entries[entries.length - trustedProxyHops] || 'unknown';
+  if (entries.length === 0) return 'unknown';
+  return entries[Math.max(0, entries.length - trustedProxyHops)];
 }
 
 const publicMessages = {

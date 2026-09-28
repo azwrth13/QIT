@@ -85,9 +85,12 @@ test('public library route validates ids, caches per Steam ID, and rate limits p
 });
 
 test('client IP ignores client-supplied X-Forwarded-For entries', () => {
+  assert.equal(clientIpFromForwardedFor('203.0.113.9'), '203.0.113.9');
+  assert.equal(clientIpFromForwardedFor('203.0.113.9, 10.0.0.1'), '203.0.113.9');
+  assert.equal(clientIpFromForwardedFor('1.1.1.1, 203.0.113.9, 10.0.0.1'), '203.0.113.9');
   assert.equal(clientIpFromForwardedFor('1.1.1.1, 203.0.113.9', 1), '203.0.113.9');
-  assert.equal(clientIpFromForwardedFor('1.1.1.1, 203.0.113.9, 10.0.0.1', 2), '203.0.113.9');
-  assert.equal(clientIpFromForwardedFor(null, 1), 'unknown');
+  assert.equal(clientIpFromForwardedFor(null), 'unknown');
+  assert.equal(clientIpFromForwardedFor(' , '), 'unknown');
 });
 
 test('concurrent public library lookups for one Steam ID share a single Steam request', async () => {
