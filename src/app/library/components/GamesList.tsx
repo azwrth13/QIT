@@ -19,6 +19,8 @@ interface FriendProfile {
   steamId: string;
   personaName: string;
   avatarMedium: string;
+  steamLevel?: number;
+  badgeCount?: number;
 }
 
 const GameList = memo(function GameList({ games, onFilteredGamesChange, publicView = false }: GameListProps) {
@@ -103,7 +105,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange, publicVi
       if (!gamesResponse.ok) throw new Error(gamesData.error || 'Failed to fetch friend games');
       if (!gamesData.games?.length) throw new Error('This friend has no public games. Check their Steam Game details privacy setting.');
       setFriendGames(gamesData.games);
-      setSelectedFriend({ steamId: data.steamId, personaName: data.personaName, avatarMedium: data.avatarMedium });
+      setSelectedFriend({ steamId: data.steamId, personaName: data.personaName, avatarMedium: data.avatarMedium, steamLevel: data.steamLevel, badgeCount: data.badgeCount });
     } catch (error) {
       console.error('Error searching friend:', error);
       setFriendError((error as Error).message || 'Failed to search for friend');
@@ -244,9 +246,17 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange, publicVi
                 height={32}
                 className="border-2 border-black"
               />
-              <span className="flex-1 text-black font-bold text-sm">
-                Showing games in common with {selectedFriend.personaName}
-              </span>
+              <div className="flex-1">
+                <span className="text-black font-bold text-sm">
+                  Showing games in common with {selectedFriend.personaName}
+                </span>
+                {(selectedFriend.steamLevel !== undefined || selectedFriend.badgeCount !== undefined) && (
+                  <div className="flex flex-wrap gap-2 mt-1 text-xs font-bold text-black">
+                    {selectedFriend.steamLevel !== undefined && <span className="bg-neobrutal-yellow border-2 border-black px-2 py-1">Level {selectedFriend.steamLevel}</span>}
+                    {selectedFriend.badgeCount !== undefined && <span className="bg-white border-2 border-black px-2 py-1">{selectedFriend.badgeCount} {selectedFriend.badgeCount === 1 ? 'badge' : 'badges'}</span>}
+                  </div>
+                )}
+              </div>
               <button
                 aria-label="Clear friend filter"
                 onClick={clearFriend}
