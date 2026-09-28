@@ -26,7 +26,7 @@ export default function HelpPopout({ isOpen, onClose }: HelpPopoutProps) {
                 </div>
                 <div>
                   <h3 className="text-lg mb-2">• Filter by Playtime</h3>
-                  <p className="text-sm ml-4">Choose "All Games", "Played" (games with playtime), or "Unplayed" (0 minutes) to narrow down your library.</p>
+                  <p className="text-sm ml-4">Choose &quot;All Games&quot;, &quot;Played&quot; (games with playtime), or &quot;Unplayed&quot; (0 minutes) to narrow down your library.</p>
                 </div>
                 <div>
                   <h3 className="text-lg mb-2">• Filter by Genre</h3>
@@ -34,7 +34,7 @@ export default function HelpPopout({ isOpen, onClose }: HelpPopoutProps) {
                 </div>
                 <div>
                   <h3 className="text-lg mb-2">• Sort Options</h3>
-                  <p className="text-sm ml-4">Sort by "Name" (alphabetical) or "Playtime" (most played first) to organize your games.</p>
+                  <p className="text-sm ml-4">Sort by &quot;Name&quot; (alphabetical) or &quot;Playtime&quot; (most played first) to organize your games.</p>
                 </div>
               </div>
             </div>
