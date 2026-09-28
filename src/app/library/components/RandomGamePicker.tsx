@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, memo, useCallback } from 'react';
+import { useState, memo, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { Game, formatPlaytime, pickGame } from "../../../lib/games";
 import { Dice6, X } from 'lucide-react';
@@ -9,14 +9,27 @@ import BrowserWindow from '../../components/BrowserWindow';
 interface RandomGamePickerProps {
   games: Game[];
   showLaunchButton?: boolean;
+  isOwnLibrary?: boolean;
 }
 
-const RandomGamePicker = memo(function RandomGamePicker({ games, showLaunchButton = false }: RandomGamePickerProps) {
+const RandomGamePicker = memo(function RandomGamePicker({ games, showLaunchButton = false, isOwnLibrary = false }: RandomGamePickerProps) {
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
+  const [achievementProgress, setAchievementProgress] = useState<{ unlocked: number; total: number; percent: number } | null>(null);
 
   const pickRandomGame = useCallback(() => {
     setSelectedGame(pickGame(games));
   }, [games]);
+
+  useEffect(() => {
+    setAchievementProgress(null);
+    if (!isOwnLibrary || !selectedGame) return;
+    const controller = new AbortController();
+    fetch(`/api/games/achievements?appid=${selectedGame.appid}`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => setAchievementProgress(data?.progress || null))
+      .catch(() => { /* Achievement details are optional; keep the game card quiet. */ });
+    return () => controller.abort();
+  }, [selectedGame, isOwnLibrary]);
 
   return (
     <BrowserWindow title="RANDOM GAME PICKER">
@@ -72,6 +85,11 @@ const RandomGamePicker = memo(function RandomGamePicker({ games, showLaunchButto
               <p className="text-sm text-black font-bold">
                 Playtime: {formatPlaytime(selectedGame.playtime_forever)}
               </p>
+              {isOwnLibrary && achievementProgress && (
+                <p className="text-sm text-black font-bold" role="status">
+                  Achievements: {achievementProgress.percent}% ({achievementProgress.unlocked}/{achievementProgress.total})
+                </p>
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 {showLaunchButton && (
                   <a
