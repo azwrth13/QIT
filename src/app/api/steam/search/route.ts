@@ -11,15 +11,17 @@ const requests = new Map<string, { start: number; count: number }>();
 const cache = new Map<string, { expires: number; status: number; body: object }>();
 
 function prune<T>(map: Map<string, T>, expired: (value: T) => boolean) {
-  if (map.size < MAX_ENTRIES) return;
-  for (const [key, value] of map) if (expired(value)) map.delete(key);
-  if (map.size >= MAX_ENTRIES) map.clear();
+  for (const [key, value] of map) {
+    if (map.size < MAX_ENTRIES && !expired(value)) break;
+    map.delete(key);
+  }
 }
 
 function rateLimited(req: Request, now: number): boolean {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || req.headers.get('x-real-ip') || 'unknown';
+  const ip = req.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() || 'unknown';
   const entry = requests.get(ip);
   if (entry && now - entry.start < RATE_WINDOW_MS) return ++entry.count > RATE_LIMIT;
+  requests.delete(ip);
   prune(requests, value => now - value.start >= RATE_WINDOW_MS);
   requests.set(ip, { start: now, count: 1 });
   return false;
@@ -55,8 +57,9 @@ export async function GET(req: Request) {
     const key = 'steamId' in input ? `id:${input.steamId}` : `vanity:${input.vanity}`;
     let result = cache.get(key);
     if (!result || result.expires <= now) {
-      prune(cache, value => value.expires <= now);
       result = { ...await lookup(input), expires: now + CACHE_TTL_MS };
+      cache.delete(key);
+      prune(cache, value => value.expires <= now);
       cache.set(key, result);
     }
     return NextResponse.json(result.body, { status: result.status });

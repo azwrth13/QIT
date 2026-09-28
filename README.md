@@ -60,7 +60,8 @@ current sessions. Logout removes the browser cookie.
 The friend and genre APIs require a valid session. Profile search is public so
 signed-out visitors can look up a profile; it accepts a 17-digit Steam ID, a
 vanity name, or a Steam profile URL, is limited to 20 requests per minute per
-client IP, and caches results for one minute. Genre requests
+client IP (the last `X-Forwarded-For` entry, as appended by the hosting
+proxy), and caches results for one minute. Genre requests
 accept 1–500 unique positive integer app IDs owned by the caller; requests for
 larger libraries must be split into batches. Steam request failures log only
 safe error metadata, never request URLs or profile payloads.

@@ -82,6 +82,20 @@ describe('public profile search', () => {
     expect((await search(searchRequest('bad input', '203.0.113.4'))).status).toBe(400);
     expect(fetch).not.toHaveBeenCalled();
   });
+  it('keys the limit on the proxy-appended IP, ignoring client-supplied forwarded entries', async () => {
+    const statuses = [];
+    for (let i = 0; i < 21; i++) statuses.push((await search(searchRequest('bad input', `198.51.100.${i}, 203.0.113.5`))).status);
+    expect(statuses.at(-1)).toBe(429);
+  });
+  it('keeps live counters when the limiter fills with other clients', async () => {
+    vi.resetModules();
+    const { GET: freshSearch } = await import('../src/app/api/steam/search/route');
+    const other = (i: number) => freshSearch(searchRequest('bad input', `10.${i >> 8}.${i & 255}.1`));
+    for (let i = 0; i < 5_000; i++) await other(i);
+    for (let i = 0; i < 20; i++) await freshSearch(searchRequest('bad input', '203.0.113.6'));
+    for (let i = 5_000; i < 10_001; i++) await other(i);
+    expect((await freshSearch(searchRequest('bad input', '203.0.113.6'))).status).toBe(429);
+  });
 });
 
 describe('genre request validation', () => {
