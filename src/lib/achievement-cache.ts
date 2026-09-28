@@ -1,5 +1,5 @@
 import { db } from './firestore';
-import { getAchievementProgress, type AchievementProgress } from './steam';
+import { getAchievementProgress, logServerError, type AchievementProgress } from './steam';
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -14,6 +14,10 @@ export async function getCachedAchievementProgress(steamId: string, appid: numbe
   const progress = await getAchievementProgress(steamId, appid);
   // Cache a null result too, so games without achievements/private stats do not
   // trigger a Steam API call every time the picker selects them.
-  await ref.set({ progress, fetchedAt: new Date().toISOString() });
+  try {
+    await ref.set({ progress, fetchedAt: new Date().toISOString() });
+  } catch (error) {
+    logServerError('Achievement cache write failed', error);
+  }
   return progress;
 }

@@ -95,7 +95,9 @@ describe('Steam inputs and URLs', () => {
     fetchMock.mockResolvedValueOnce(Response.json({ playerstats: { success: false, error: 'Profile is not public' } }, { status: 403 }));
     expect(await getAchievementProgress(steamId, 10)).toBeNull();
     fetchMock.mockResolvedValueOnce(Response.json({ playerstats: { success: true, achievements: [{ achieved: 1 }, { achieved: 0 }, { achieved: 1 }] } }));
-    expect(await getAchievementProgress(steamId, 10)).toEqual({ unlocked: 2, total: 3, percent: 67 });
+    expect(await getAchievementProgress(steamId, 10)).toEqual({ unlocked: 2, total: 3, percent: 66 });
+    fetchMock.mockResolvedValueOnce(Response.json({ playerstats: { success: true, achievements: [...Array(199).fill({ achieved: 1 }), { achieved: 0 }] } }));
+    expect(await getAchievementProgress(steamId, 10)).toEqual({ unlocked: 199, total: 200, percent: 99 });
     for (const status of [429, 500]) {
       fetchMock.mockResolvedValueOnce(new Response('', { status }));
       await expect(getAchievementProgress(steamId, 10)).rejects.toThrow('Steam request failed');

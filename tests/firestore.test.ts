@@ -85,3 +85,18 @@ it('caches Steam no-stats and private achievement responses but not other failur
     expect((await db.doc(`users/${steamId}/achievementProgress/${appid}`).get()).exists).toBe(false);
   }
 });
+
+it('returns fetched achievement progress when the cache write fails', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ playerstats: { success: true, achievements: [{ achieved: 1 }, { achieved: 0 }] } })));
+  const ref = db.doc(`users/${steamId}/achievementProgress/200005`);
+  const set = vi.spyOn(Object.getPrototypeOf(ref), 'set').mockRejectedValueOnce(new Error('write failed'));
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    expect(await getCachedAchievementProgress(steamId, 200005)).toEqual({ unlocked: 1, total: 2, percent: 50 });
+    expect(logged).toHaveBeenCalledWith('Achievement cache write failed', { name: 'Error' });
+    expect((await ref.get()).exists).toBe(false);
+  } finally {
+    set.mockRestore();
+    logged.mockRestore();
+  }
+});

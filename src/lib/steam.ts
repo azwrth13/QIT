@@ -133,7 +133,7 @@ export async function getAchievementProgress(steamId: string, appid: number): Pr
   if (!Array.isArray(stats.achievements) || stats.achievements.length === 0) return null;
   const total = stats.achievements.length;
   const unlocked = stats.achievements.filter(achievement => achievement.achieved === 1).length;
-  return { unlocked, total, percent: Math.round((unlocked / total) * 100) };
+  return { unlocked, total, percent: Math.floor((unlocked / total) * 100) };
 }
 
 export async function getPublicLibrary(steamId: string) {
