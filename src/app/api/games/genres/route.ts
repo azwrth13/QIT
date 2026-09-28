@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server';
 import { getSteamId } from '@/lib/auth';
 import { getStoredGames } from '@/lib/library-data';
 import { logServerError, makeRoom } from '@/lib/steam';
-import { validateAppIds } from '@/lib/genres';
+import { MAX_GENRE_APPIDS, validateAppIds } from '@/lib/genres';
 
 const genreCache = new Map<number, { genres: string[]; expires: number }>();
 const day = 24 * 60 * 60 * 1000;
-const GENRE_BATCH_SIZE = 40;
 const GENRE_CACHE_LIMIT = 20000;
 
 export async function POST(req: Request) {
@@ -15,8 +14,8 @@ export async function POST(req: Request) {
   let body: unknown;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
   const ids = validateAppIds(body);
-  if (!ids || ids.length > GENRE_BATCH_SIZE) {
-    return NextResponse.json({ error: `Enter up to ${GENRE_BATCH_SIZE} unique valid app IDs.` }, { status: 400 });
+  if (!ids) {
+    return NextResponse.json({ error: `Enter up to ${MAX_GENRE_APPIDS} unique valid app IDs.` }, { status: 400 });
   }
   try {
     const owned = new Set((await getStoredGames(steamId)).map(game => game.appid));

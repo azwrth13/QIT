@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { baseUrl, logServerError, OPENID_ENDPOINT, steamApiUrl, steamJson, validateOpenId } from '@/lib/steam';
+import { baseUrl, getSteamProfile, logServerError, OPENID_ENDPOINT, validateOpenId } from '@/lib/steam';
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
 import { AUTO_SYNC_COOKIE, ensureUser } from '@/lib/library-data';
-import { SteamProfileResponse } from '@/types/api';
 
 function loginError(req: Request, code: string) {
   let origin: string;
@@ -26,10 +25,9 @@ export async function GET(req: Request) {
     if (!verification.ok) return loginError(req, 'steam_verification_unavailable');
     const body = await verification.text();
     if (!body.split(/\r?\n/).includes('is_valid:true')) return loginError(req, 'verification_failed');
-    const profileData = await steamJson<SteamProfileResponse>(steamApiUrl('/ISteamUser/GetPlayerSummaries/v2/', { steamids: steamId }));
-    const profile = profileData.response.players.find(player => player.steamid === steamId);
+    const profile = await getSteamProfile(steamId);
     if (!profile) return loginError(req, 'profile_not_found');
-    await ensureUser(steamId, profile.profileurl);
+    await ensureUser(steamId, profile.profileUrl);
     const response = NextResponse.redirect(`${baseUrl()}/library`);
     response.cookies.set(SESSION_COOKIE, await createSession(steamId), sessionCookieOptions);
     response.cookies.set('steamid', '', { ...sessionCookieOptions, maxAge: 0 });

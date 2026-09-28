@@ -7,8 +7,7 @@ import Image from 'next/image';
 import VirtualGameGrid from './VirtualGameGrid';
 import { SearchIcon, X, UserX } from 'lucide-react';
 import { Game } from "../../../lib/games";
-
-const GENRE_BATCH_SIZE = 40;
+import { MAX_GENRE_APPIDS } from "../../../lib/genres";
 
 interface GameListProps {
   games: Game[];
@@ -54,8 +53,8 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange, publicVi
       applyGenres(genresMap);
       const appids = publicView ? [] : games.filter(g => !g.genres || g.genres.length === 0).map(g => g.appid);
       let errorCount = 0;
-      for (let start = 0; start < appids.length && !isCancelled; start += GENRE_BATCH_SIZE) {
-        const batch = appids.slice(start, start + GENRE_BATCH_SIZE);
+      for (let start = 0; start < appids.length && !isCancelled; start += MAX_GENRE_APPIDS) {
+        const batch = appids.slice(start, start + MAX_GENRE_APPIDS);
         try {
           const response = await fetch('/api/games/genres', {
             method: 'POST',
