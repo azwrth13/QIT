@@ -7,6 +7,7 @@ const RATE_LIMIT = 20;
 const RATE_WINDOW_MS = 60_000;
 const CACHE_TTL_MS = 60_000;
 const MAX_ENTRIES = 10_000;
+const COSMETIC_TIMEOUT_MS = 3_000;
 
 const requests = new Map<string, { start: number; count: number }>();
 const cache = new Map<string, { expires: number; status: number; body: object }>();
@@ -43,9 +44,11 @@ async function lookup(input: { steamId: string } | { vanity: string }): Promise<
   let badgeCount: number | undefined;
   if (player.communityvisibilitystate === 3) {
     const [levelResult, badgesResult] = await Promise.allSettled([
-      steamJson<{ response?: { player_level?: number } }>(steamApiUrl('/IPlayerService/GetSteamLevel/v1/', { steamid: steamId })),
-      steamJson<{ response?: { badges?: unknown[] } }>(steamApiUrl('/IPlayerService/GetBadges/v1/', { steamid: steamId })),
+      steamJson<{ response?: { player_level?: number } }>(steamApiUrl('/IPlayerService/GetSteamLevel/v1/', { steamid: steamId }), COSMETIC_TIMEOUT_MS),
+      steamJson<{ response?: { badges?: unknown[] } }>(steamApiUrl('/IPlayerService/GetBadges/v1/', { steamid: steamId }), COSMETIC_TIMEOUT_MS),
     ]);
+    if (levelResult.status === 'rejected') logServerError('Error fetching Steam level', levelResult.reason);
+    if (badgesResult.status === 'rejected') logServerError('Error fetching Steam badges', badgesResult.reason);
     const level = levelResult.status === 'fulfilled' ? levelResult.value.response?.player_level : undefined;
     if (typeof level === 'number' && Number.isInteger(level)) {
       steamLevel = level;

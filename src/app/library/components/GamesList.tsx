@@ -253,7 +253,7 @@ const GameList = memo(function GameList({ games, onFilteredGamesChange, publicVi
                 {(selectedFriend.steamLevel !== undefined || selectedFriend.badgeCount !== undefined) && (
                   <div className="flex flex-wrap gap-2 mt-1 text-xs font-bold text-black">
                     {selectedFriend.steamLevel !== undefined && <span className="bg-neobrutal-yellow border-2 border-black px-2 py-1">Level {selectedFriend.steamLevel}</span>}
-                    {selectedFriend.badgeCount !== undefined && <span className="bg-white border-2 border-black px-2 py-1">{selectedFriend.badgeCount} badges</span>}
+                    {selectedFriend.badgeCount !== undefined && <span className="bg-white border-2 border-black px-2 py-1">{selectedFriend.badgeCount} {selectedFriend.badgeCount === 1 ? 'badge' : 'badges'}</span>}
                   </div>
                 )}
               </div>

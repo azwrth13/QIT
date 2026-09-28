@@ -18,8 +18,8 @@ export function steamApiUrl(path: string, params: Record<string, string>): URL {
   return url;
 }
 
-export async function steamJson<T>(url: URL): Promise<T> {
-  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+export async function steamJson<T>(url: URL, timeoutMs = 15000): Promise<T> {
+  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
   if (!response.ok) throw new SteamApiError(response.status);
   return response.json() as Promise<T>;
 }

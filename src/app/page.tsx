@@ -241,7 +241,7 @@ export default function Home() {
                   {(profile.steamLevel !== undefined || profile.badgeCount !== undefined) && (
                     <div className="flex flex-wrap gap-2 mt-2 text-xs font-bold text-black">
                       {profile.steamLevel !== undefined && <span className="bg-neobrutal-yellow border-2 border-black px-2 py-1">Level {profile.steamLevel}</span>}
-                      {profile.badgeCount !== undefined && <span className="bg-white border-2 border-black px-2 py-1">{profile.badgeCount} badges</span>}
+                      {profile.badgeCount !== undefined && <span className="bg-white border-2 border-black px-2 py-1">{profile.badgeCount} {profile.badgeCount === 1 ? 'badge' : 'badges'}</span>}
                     </div>
                   )}
                 </div>

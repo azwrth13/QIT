@@ -115,6 +115,7 @@ describe('public profile search', () => {
   });
   it('omits whichever cosmetic fields fail to load without failing search', async () => {
     const id = '76561198000000003';
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(fetch).mockResolvedValueOnce(player(id)).mockRejectedValueOnce(new Error('level unavailable'))
       .mockResolvedValueOnce(Response.json({ response: { badges: [{}, {}] } }));
     const response = await search(searchRequest(id, '203.0.113.9'));
@@ -122,6 +123,9 @@ describe('public profile search', () => {
     const body = await response.json();
     expect(body).toMatchObject({ steamId: id, badgeCount: 2 });
     expect(body).not.toHaveProperty('steamLevel');
+    expect(logged).toHaveBeenCalledWith('Error fetching Steam level', { name: 'Error' });
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
   });
   it('rejects invalid input before calling Steam', async () => {
     for (const q of ['', 'a'.repeat(257), 'name&key=x', 'https://evil.example/id/name']) {
