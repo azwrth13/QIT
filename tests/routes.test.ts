@@ -217,11 +217,14 @@ describe('achievement progress route', () => {
     expect((await achievements(achievementRequest())).status).toBe(400);
     expect(getCachedAchievementProgress).not.toHaveBeenCalled();
   });
-  it.each(['no achievements', 'private stats'])('quietly returns no progress for %s', async () => {
-    getCachedAchievementProgress.mockResolvedValue(null);
+  it('quietly returns no progress when the lookup fails', async () => {
+    getCachedAchievementProgress.mockRejectedValue(new Error('Steam request failed'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const response = await achievements(achievementRequest());
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ progress: null });
+    expect(log).toHaveBeenCalledWith('Achievement lookup failed', { name: 'Error' });
+    log.mockRestore();
   });
   it('returns mapped progress for an owned game', async () => {
     getCachedAchievementProgress.mockResolvedValue({ unlocked: 6, total: 10, percent: 60 });

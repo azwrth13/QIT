@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { db } from '../src/lib/firestore';
 import { getStoredGames, getStoredProfile, ownsGames, syncLibrary } from '../src/lib/library-data';
 import { getGenresForApps } from '../src/lib/genre-cache';
+import { getCachedAchievementProgress } from '../src/lib/achievement-cache';
 import type { SteamProfile } from '../src/lib/steam';
 
 const steamId = '76561198000000042';
@@ -55,4 +56,27 @@ it('syncs insert, update, and delete, and shares the genre cache between librari
   expect((await db.doc(`users/${steamId}/games/100002`).get()).exists).toBe(false);
   expect(await getGenresForApps([100001])).toEqual({ 100001: ['Action'] });
   expect(storeCalls).toBe(3);
+});
+
+it('caches Steam no-stats and private achievement responses but not transient failures', async () => {
+  let status = 400;
+  let steamCalls = 0;
+  vi.stubGlobal('fetch', vi.fn(async (url: URL | string) => {
+    if (!String(url).includes('GetPlayerAchievements')) throw new Error('Unexpected request');
+    steamCalls++;
+    return Response.json({ playerstats: { success: false } }, { status });
+  }));
+
+  expect(await getCachedAchievementProgress(steamId, 200001)).toBeNull();
+  expect(await getCachedAchievementProgress(steamId, 200001)).toBeNull();
+  expect(steamCalls).toBe(1);
+
+  status = 403;
+  expect(await getCachedAchievementProgress(steamId, 200002)).toBeNull();
+  expect(await getCachedAchievementProgress(steamId, 200002)).toBeNull();
+  expect(steamCalls).toBe(2);
+
+  status = 500;
+  await expect(getCachedAchievementProgress(steamId, 200003)).rejects.toThrow('Steam request failed');
+  expect((await db.doc(`users/${steamId}/achievementProgress/200003`).get()).exists).toBe(false);
 });

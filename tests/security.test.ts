@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sealData } from 'iron-session';
 import { createSession, SESSION_TTL, verifySession } from '../src/lib/session';
-import { isSteamId, logServerError, OPENID_ENDPOINT, OPENID_NAMESPACE, parseSteamSearch, steamApiUrl, validateOpenId } from '../src/lib/steam';
+import { getAchievementProgress, isSteamId, logServerError, OPENID_ENDPOINT, OPENID_NAMESPACE, parseSteamSearch, steamApiUrl, validateOpenId } from '../src/lib/steam';
 import { MAX_GENRE_APPIDS, validateAppIds } from '../src/lib/genres';
 
 const steamId = '76561198000000000';
@@ -86,6 +86,20 @@ describe('Steam inputs and URLs', () => {
     expect(url.searchParams.getAll('key')).toEqual(['test-key']);
     expect(url.searchParams.get('vanityurl')).toBe('name&key=injected');
     expect(() => steamApiUrl('/test', { steamid: '123&key=injected' })).toThrow('Invalid Steam ID');
+  });
+  it('treats Steam no-stats and private responses as no achievement progress', async () => {
+    vi.stubEnv('STEAM_API_KEY', 'test-key');
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockResolvedValueOnce(Response.json({ playerstats: { success: false, error: 'Requested app has no stats' } }, { status: 400 }));
+    expect(await getAchievementProgress(steamId, 10)).toBeNull();
+    fetchMock.mockResolvedValueOnce(Response.json({ playerstats: { success: false, error: 'Profile is not public' } }, { status: 403 }));
+    expect(await getAchievementProgress(steamId, 10)).toBeNull();
+    fetchMock.mockResolvedValueOnce(Response.json({ playerstats: { success: true, achievements: [{ achieved: 1 }, { achieved: 0 }, { achieved: 1 }] } }));
+    expect(await getAchievementProgress(steamId, 10)).toEqual({ unlocked: 2, total: 3, percent: 67 });
+    for (const status of [429, 500]) {
+      fetchMock.mockResolvedValueOnce(new Response('', { status }));
+      await expect(getAchievementProgress(steamId, 10)).rejects.toThrow('Steam request failed');
+    }
   });
   it('logs only safe error metadata', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});

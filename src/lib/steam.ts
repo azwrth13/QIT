@@ -119,10 +119,15 @@ export type AchievementProgress = { unlocked: number; total: number; percent: nu
 
 export async function getAchievementProgress(steamId: string, appid: number): Promise<AchievementProgress | null> {
   if (!isSteamId(steamId)) return null;
-  const data = await steamJson<{ playerstats?: {
+  const response = await fetch(steamApiUrl('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: steamId, appid: String(appid) }),
+    { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+  // Steam answers 400 for games without stats and 403 for private game details.
+  if (response.status === 400 || response.status === 403) return null;
+  if (!response.ok) throw new Error('Steam request failed');
+  const data = await response.json() as { playerstats?: {
     success?: boolean;
     achievements?: Array<{ achieved?: number }>;
-  } }>(steamApiUrl('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: steamId, appid: String(appid) }));
+  } };
   const stats = data.playerstats;
   if (!stats?.success || !Array.isArray(stats.achievements) || stats.achievements.length === 0) return null;
   const total = stats.achievements.length;
