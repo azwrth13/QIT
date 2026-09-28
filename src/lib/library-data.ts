@@ -22,6 +22,12 @@ export async function getStoredGames(steamId: string): Promise<Game[]> {
   return games.map(game => ({ ...game, genres: genres[game.appid] || [] }));
 }
 
+export async function ownsGames(steamId: string, appids: number[]): Promise<boolean> {
+  const gamesRef = db.collection('users').doc(steamId).collection('games');
+  const snapshots = await db.getAll(...appids.map(id => gamesRef.doc(String(id))));
+  return snapshots.every(snapshot => snapshot.exists);
+}
+
 export async function syncLibrary(steamId: string, profile: SteamProfile): Promise<{ games: Game[]; lastSynced: string } | null> {
   const games = await getSteamGames(steamId);
   if (games === null) return null;
@@ -53,7 +59,7 @@ export async function syncLibrary(steamId: string, profile: SteamProfile): Promi
   }
   const lastSynced = new Date().toISOString();
   await userRef.set({ ...profile, lastSyncedAt: lastSynced }, { merge: true });
-  const genres = await getGenresForApps(games.map(game => game.appid), 40);
+  const genres = await getGenresForApps(games.map(game => game.appid), 0);
   return { games: games.map(game => ({ ...game, genres: genres[game.appid] || [] })), lastSynced };
 }
 

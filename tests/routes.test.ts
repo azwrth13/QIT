@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSession, SESSION_COOKIE } from '../src/lib/session';
 
-const { cookieValues, getStoredGames, getLastSyncedAt, getStoredProfile, ensureUser, getGenresForApps } = vi.hoisted(() => ({
+const { cookieValues, getStoredGames, getLastSyncedAt, getStoredProfile, ensureUser, ownsGames, getGenresForApps } = vi.hoisted(() => ({
   cookieValues: new Map<string, string>(), getStoredGames: vi.fn(), getLastSyncedAt: vi.fn(),
-  getStoredProfile: vi.fn(), ensureUser: vi.fn(), getGenresForApps: vi.fn(),
+  getStoredProfile: vi.fn(), ensureUser: vi.fn(), ownsGames: vi.fn(), getGenresForApps: vi.fn(),
 }));
 vi.mock('next/headers', () => ({ cookies: async () => ({
   get: (name: string) => cookieValues.has(name) ? { value: cookieValues.get(name) } : undefined,
 }) }));
-vi.mock('../src/lib/library-data', () => ({ AUTO_SYNC_COOKIE: 'library-autosync', getStoredGames, getLastSyncedAt, getStoredProfile, ensureUser }));
+vi.mock('../src/lib/library-data', () => ({ AUTO_SYNC_COOKIE: 'library-autosync', getStoredGames, getLastSyncedAt, getStoredProfile, ensureUser, ownsGames }));
 vi.mock('../src/lib/genre-cache', () => ({ getGenresForApps }));
 
 import { GET as callback } from '../src/app/api/auth/steam-callback/route';
@@ -30,6 +30,7 @@ beforeEach(() => {
   getLastSyncedAt.mockReset();
   getStoredProfile.mockReset();
   ensureUser.mockReset();
+  ownsGames.mockReset();
   getGenresForApps.mockReset();
   getStoredGames.mockResolvedValue([]);
   getLastSyncedAt.mockResolvedValue(null);
@@ -48,6 +49,7 @@ describe('route authentication', () => {
     ]);
     expect(responses.map(response => response.status)).toEqual([401, 401, 401, 401]);
     expect(getStoredGames).not.toHaveBeenCalled();
+    expect(ownsGames).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
   it('looks up games using the verified session identity', async () => {
@@ -62,7 +64,6 @@ describe('route authentication', () => {
 describe('post-login auto sync', () => {
   beforeEach(async () => { cookieValues.set(SESSION_COOKIE, await createSession(steamId)); });
   it('requests one sync after sign-in and consumes the flag', async () => {
-    cookieValues.set('library-synced', '2026-01-01T00:00:00.000Z');
     getLastSyncedAt.mockResolvedValue('2026-01-01T00:00:00.000Z');
     cookieValues.set('library-autosync', '1');
     getStoredGames.mockResolvedValue([{ appid: 10 }]);
@@ -77,7 +78,6 @@ describe('post-login auto sync', () => {
   it('requests a sync for a never-synced empty library but not for a synced empty one', async () => {
     getStoredGames.mockResolvedValue([]);
     expect(await (await games()).json()).toMatchObject({ autoSync: true, lastSynced: null });
-    cookieValues.set('library-synced', '2026-01-01T00:00:00.000Z');
     getLastSyncedAt.mockResolvedValue('2026-01-01T00:00:00.000Z');
     expect(await (await games()).json()).toMatchObject({ autoSync: false });
   });
@@ -136,14 +136,15 @@ describe('genre request validation', () => {
     expect((await genres(request(body))).status).toBe(400);
     expect(fetch).not.toHaveBeenCalled();
   });
-  it('rejects requests larger than the caller library and unowned IDs', async () => {
-    getStoredGames.mockResolvedValue([{ appid: 10 }]);
+  it('rejects unowned IDs without looking up genres', async () => {
+    ownsGames.mockResolvedValue(false);
     expect((await genres(request('{"appids":[10,20]}'))).status).toBe(400);
-    expect((await genres(request('{"appids":[20]}'))).status).toBe(400);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(ownsGames).toHaveBeenCalledWith(steamId, [10, 20]);
+    expect(getStoredGames).not.toHaveBeenCalled();
+    expect(getGenresForApps).not.toHaveBeenCalled();
   });
   it('fetches genres for an owned game', async () => {
-    getStoredGames.mockResolvedValue([{ appid: 10 }]);
+    ownsGames.mockResolvedValue(true);
     getGenresForApps.mockResolvedValue({ 10: ['Action'] });
     const response = await genres(request('{"appids":[10]}'));
     expect(response.status).toBe(200);

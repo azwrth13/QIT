@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { db } from '../src/lib/firestore';
-import { getStoredGames, getStoredProfile, syncLibrary } from '../src/lib/library-data';
+import { getStoredGames, getStoredProfile, ownsGames, syncLibrary } from '../src/lib/library-data';
 import { getGenresForApps } from '../src/lib/genre-cache';
 import type { SteamProfile } from '../src/lib/steam';
 
@@ -34,9 +34,13 @@ it('syncs insert, update, and delete, and shares the genre cache between librari
 
   const first = await syncLibrary(steamId, profile);
   expect(first?.games).toHaveLength(2);
-  expect(first?.games[0].genres).toEqual(['Action']);
+  expect(first?.games[0].genres).toEqual([]);
+  expect(storeCalls).toBe(0);
+  expect((await getStoredGames(steamId))[0].genres).toEqual(['Action']);
   expect((await getStoredProfile(steamId))?.personaName).toBe('Test player');
   expect(storeCalls).toBe(2);
+  expect(await ownsGames(steamId, [100001, 100002])).toBe(true);
+  expect(await ownsGames(steamId, [100001, 100003])).toBe(false);
 
   games = [
     { appid: 100001, name: 'First renamed', playtime_forever: 25 },
@@ -44,6 +48,8 @@ it('syncs insert, update, and delete, and shares the genre cache between librari
   ];
   const second = await syncLibrary(steamId, profile);
   expect(second?.lastSynced).toBeTruthy();
+  expect(second?.games.find(game => game.appid === 100001)?.genres).toEqual(['Action']);
+  expect(storeCalls).toBe(2);
   expect((await getStoredGames(steamId)).map(game => game.appid).sort()).toEqual([100001, 100003]);
   expect((await db.doc(`users/${steamId}/games/100001`).get()).data()?.name).toBe('First renamed');
   expect((await db.doc(`users/${steamId}/games/100002`).get()).exists).toBe(false);

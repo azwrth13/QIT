@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSteamId } from '@/lib/auth';
-import { getStoredGames } from '@/lib/library-data';
+import { ownsGames } from '@/lib/library-data';
 import { getGenresForApps } from '@/lib/genre-cache';
 import { logServerError } from '@/lib/steam';
 import { MAX_GENRE_APPIDS, validateAppIds } from '@/lib/genres';
@@ -13,8 +13,7 @@ export async function POST(req: Request) {
   const ids = validateAppIds(body);
   if (!ids) return NextResponse.json({ error: `Enter up to ${MAX_GENRE_APPIDS} unique valid app IDs.` }, { status: 400 });
   try {
-    const owned = new Set((await getStoredGames(steamId)).map(game => game.appid));
-    if (ids.some(id => !owned.has(id))) return NextResponse.json({ error: 'App IDs must belong to your library' }, { status: 400 });
+    if (!await ownsGames(steamId, ids)) return NextResponse.json({ error: 'App IDs must belong to your library' }, { status: 400 });
     const genres = await getGenresForApps(ids);
     return NextResponse.json({ genres, successCount: Object.keys(genres).length,
       errorCount: ids.length - Object.keys(genres).length, totalRequested: ids.length });
