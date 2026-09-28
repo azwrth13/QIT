@@ -18,9 +18,9 @@ export function steamApiUrl(path: string, params: Record<string, string>): URL {
   return url;
 }
 
-export async function steamJson<T>(url: URL): Promise<T> {
+export async function steamJson<T>(url: URL, acceptedStatuses: number[] = []): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new SteamApiError(response.status);
+  if (!response.ok && !acceptedStatuses.includes(response.status)) throw new SteamApiError(response.status);
   return response.json() as Promise<T>;
 }
 
@@ -119,17 +119,16 @@ export type AchievementProgress = { unlocked: number; total: number; percent: nu
 
 export async function getAchievementProgress(steamId: string, appid: number): Promise<AchievementProgress | null> {
   if (!isSteamId(steamId)) return null;
-  const response = await fetch(steamApiUrl('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: steamId, appid: String(appid) }),
-    { cache: 'no-store', signal: AbortSignal.timeout(15000) });
-  // Steam answers 400 for games without stats and 403 for private game details.
-  if (response.status === 400 || response.status === 403) return null;
-  if (!response.ok) throw new Error('Steam request failed');
-  const data = await response.json() as { playerstats?: {
+  // Steam answers 400 for games without stats and 403 for private game details,
+  // both with a playerstats body whose success is false.
+  const data = await steamJson<{ playerstats?: {
     success?: boolean;
     achievements?: Array<{ achieved?: number }>;
-  } };
-  const stats = data.playerstats;
-  if (!stats?.success || !Array.isArray(stats.achievements) || stats.achievements.length === 0) return null;
+  } } | null>(steamApiUrl('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: steamId, appid: String(appid) }), [400, 403]);
+  const stats = data?.playerstats;
+  if (stats?.success === false) return null;
+  if (stats?.success !== true) throw new Error('Steam request failed');
+  if (!Array.isArray(stats.achievements) || stats.achievements.length === 0) return null;
   const total = stats.achievements.length;
   const unlocked = stats.achievements.filter(achievement => achievement.achieved === 1).length;
   return { unlocked, total, percent: Math.round((unlocked / total) * 100) };

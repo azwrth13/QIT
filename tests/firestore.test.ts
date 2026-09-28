@@ -58,13 +58,14 @@ it('syncs insert, update, and delete, and shares the genre cache between librari
   expect(storeCalls).toBe(3);
 });
 
-it('caches Steam no-stats and private achievement responses but not transient failures', async () => {
+it('caches Steam no-stats and private achievement responses but not other failures', async () => {
   let status = 400;
+  let body: unknown = { playerstats: { success: false, error: 'Requested app has no stats' } };
   let steamCalls = 0;
   vi.stubGlobal('fetch', vi.fn(async (url: URL | string) => {
     if (!String(url).includes('GetPlayerAchievements')) throw new Error('Unexpected request');
     steamCalls++;
-    return Response.json({ playerstats: { success: false } }, { status });
+    return Response.json(body, { status });
   }));
 
   expect(await getCachedAchievementProgress(steamId, 200001)).toBeNull();
@@ -72,11 +73,15 @@ it('caches Steam no-stats and private achievement responses but not transient fa
   expect(steamCalls).toBe(1);
 
   status = 403;
+  body = { playerstats: { success: false, error: 'Profile is not public' } };
   expect(await getCachedAchievementProgress(steamId, 200002)).toBeNull();
   expect(await getCachedAchievementProgress(steamId, 200002)).toBeNull();
   expect(steamCalls).toBe(2);
 
-  status = 500;
-  await expect(getCachedAchievementProgress(steamId, 200003)).rejects.toThrow('Steam request failed');
-  expect((await db.doc(`users/${steamId}/achievementProgress/200003`).get()).exists).toBe(false);
+  for (const [appid, nextStatus] of [[200003, 500], [200004, 403]]) {
+    status = nextStatus;
+    body = { error: 'Forbidden' };
+    await expect(getCachedAchievementProgress(steamId, appid)).rejects.toThrow('Steam request failed');
+    expect((await db.doc(`users/${steamId}/achievementProgress/${appid}`).get()).exists).toBe(false);
+  }
 });

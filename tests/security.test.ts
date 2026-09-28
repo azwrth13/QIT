@@ -100,6 +100,12 @@ describe('Steam inputs and URLs', () => {
       fetchMock.mockResolvedValueOnce(new Response('', { status }));
       await expect(getAchievementProgress(steamId, 10)).rejects.toThrow('Steam request failed');
     }
+    fetchMock.mockResolvedValueOnce(new Response('<html><body>Forbidden</body></html>', { status: 403, headers: { 'content-type': 'text/html' } }));
+    await expect(getAchievementProgress(steamId, 10)).rejects.toThrow();
+    fetchMock.mockResolvedValueOnce(Response.json({ error: 'Forbidden' }, { status: 403 }));
+    await expect(getAchievementProgress(steamId, 10)).rejects.toThrow('Steam request failed');
+    fetchMock.mockResolvedValueOnce(Response.json({}));
+    await expect(getAchievementProgress(steamId, 10)).rejects.toThrow('Steam request failed');
   });
   it('logs only safe error metadata', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
