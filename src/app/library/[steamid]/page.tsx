@@ -5,6 +5,7 @@ import type { Game } from '../../../lib/games';
 import BrowserWindow from '../../components/BrowserWindow';
 import GameList from '../components/GamesList';
 import RandomGamePicker from '../components/RandomGamePicker';
+import LibraryStatsCard from '../components/LibraryStatsCard';
 
 type PublicLibrary = { state: 'public' | 'private' | 'unknown'; profile: { personaName: string } | null; games: Game[]; message: string | null };
 
@@ -31,6 +32,7 @@ export default function PublicLibraryPage({ params }: { params: Promise<{ steami
     {!library && !error && <p className="text-black">Loading Steam library...</p>}
     {library?.message && <p className="text-black font-bold">{library.message}</p>}
     {library?.state === 'public' && library.games.length === 0 && <p className="text-black font-bold">This public library has no games.</p>}
+    {library?.state === 'public' && library.games.length > 0 && <LibraryStatsCard games={library.games} />}
     {library?.state === 'public' && library.games.length > 0 && <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2"><GameList publicView games={library.games} onFilteredGamesChange={setFiltered} /></div>
       <RandomGamePicker games={filtered} />

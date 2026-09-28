@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickGame } from '../src/lib/games.ts';
+import { getLibraryStats, pickGame } from '../src/lib/games.ts';
 import { getPublicLibrary, getPublicLibraryResponse, makeRoom } from '../src/lib/steam.ts';
 
 test('picker never falls back to full library when filters have no matches', () => {
@@ -8,6 +8,28 @@ test('picker never falls back to full library when filters have no matches', () 
   const filtered = allGames.filter(game => game.name.includes('missing'));
   assert.equal(pickGame(filtered, () => 0), null);
   assert.equal(pickGame(allGames, () => 0)?.appid, 1);
+});
+
+test('library stats totals playtime and reports unplayed share and most-played game', () => {
+  const stats = getLibraryStats([
+    { appid: 1, name: 'One', playtime_forever: 120 },
+    { appid: 2, name: 'Two', playtime_forever: 30 },
+    { appid: 3, name: 'Three' },
+    { appid: 4, name: 'Four', playtime_forever: 0 },
+  ]);
+  assert.deepEqual(stats, {
+    totalHours: 3,
+    unplayedCount: 2,
+    unplayedPercentage: 50,
+    mostPlayed: { game: { appid: 1, name: 'One', playtime_forever: 120 }, hours: 2 },
+  });
+});
+
+test('library stats handle empty and entirely unplayed libraries', () => {
+  assert.deepEqual(getLibraryStats([]), { totalHours: 0, unplayedCount: 0, unplayedPercentage: 0, mostPlayed: null });
+  assert.deepEqual(getLibraryStats([{ appid: 1, name: 'One' }]), {
+    totalHours: 0, unplayedCount: 1, unplayedPercentage: 100, mostPlayed: null,
+  });
 });
 
 test('private Steam profile does not request or reveal owned games', async () => {
