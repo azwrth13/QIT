@@ -123,3 +123,39 @@ export async function getPublicLibrary(steamId: string) {
   if (games === null) return { state: 'private' as const, profile, games: [] };
   return { state: 'public' as const, profile, games };
 }
+
+const PUBLIC_RATE_LIMIT = 20;
+const PUBLIC_RATE_WINDOW_MS = 60 * 1000;
+const PUBLIC_CACHE_MS = 5 * 60 * 1000;
+const PUBLIC_MAP_LIMIT = 1000;
+const publicRequests = new Map<string, { count: number; resetAt: number }>();
+const publicCache = new Map<string, { expiresAt: number; library: Awaited<ReturnType<typeof getPublicLibrary>> }>();
+
+function pruneExpired<T>(map: Map<string, T>, expiry: (value: T) => number, now: number) {
+  if (map.size < PUBLIC_MAP_LIMIT) return;
+  for (const [key, value] of map) if (expiry(value) <= now) map.delete(key);
+}
+
+const publicMessages = {
+  public: null,
+  private: 'This library is private or Steam is not sharing its games. The owner can set Game details to Public in Steam privacy settings.',
+  unknown: 'Steam profile not found. Check the Steam ID and try again.',
+};
+
+export async function getPublicLibraryResponse(steamId: string, clientIp: string, now = Date.now()) {
+  if (!/^\d{17}$/.test(steamId)) return { status: 400, body: { error: 'Steam ID must be exactly 17 digits.' } };
+  pruneExpired(publicRequests, bucket => bucket.resetAt, now);
+  const bucket = publicRequests.get(clientIp);
+  if (!bucket || bucket.resetAt <= now) publicRequests.set(clientIp, { count: 1, resetAt: now + PUBLIC_RATE_WINDOW_MS });
+  else if (bucket.count >= PUBLIC_RATE_LIMIT) {
+    return { status: 429, body: { error: 'Too many requests. Please wait a minute and try again.' }, retryAfter: Math.ceil((bucket.resetAt - now) / 1000) };
+  } else bucket.count++;
+  let cached = publicCache.get(steamId);
+  if (!cached || cached.expiresAt <= now) {
+    pruneExpired(publicCache, entry => entry.expiresAt, now);
+    cached = { expiresAt: now + PUBLIC_CACHE_MS, library: await getPublicLibrary(steamId) };
+    publicCache.set(steamId, cached);
+  }
+  const { library } = cached;
+  return { status: library.state === 'unknown' ? 404 : 200, body: { ...library, message: publicMessages[library.state] } };
+}

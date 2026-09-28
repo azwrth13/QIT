@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server';
-import { getPublicLibrary } from '../../../../../lib/steam';
+import { getPublicLibraryResponse } from '../../../../../lib/steam';
 
-export async function GET(_request: Request, { params }: { params: Promise<{ steamid: string }> }) {
+function clientIp(request: Request) {
+  return request.headers.get('x-forwarded-for')?.split(',')[0].trim() || request.headers.get('x-real-ip') || 'unknown';
+}
+
+export async function GET(request: Request, { params }: { params: Promise<{ steamid: string }> }) {
   try {
     const { steamid } = await params;
-    const library = await getPublicLibrary(steamid);
-    return NextResponse.json(library, { status: library.state === 'unknown' ? 404 : 200 });
+    const result = await getPublicLibraryResponse(steamid, clientIp(request));
+    const headers: Record<string, string> = 'retryAfter' in result ? { 'Retry-After': String(result.retryAfter) } : {};
+    return NextResponse.json(result.body, { status: result.status, headers });
   } catch (error) {
-    console.error('Public library lookup failed:', error);
+    console.error('Public library lookup failed:', error instanceof Error ? error.message : 'unknown error');
     return NextResponse.json({ error: 'Unable to reach Steam right now.' }, { status: 502 });
   }
 }

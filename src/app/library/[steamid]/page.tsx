@@ -6,7 +6,7 @@ import BrowserWindow from '../../components/BrowserWindow';
 import GameList from '../components/GamesList';
 import RandomGamePicker from '../components/RandomGamePicker';
 
-type PublicLibrary = { state: 'public' | 'private' | 'unknown'; profile: { personaName: string } | null; games: Game[] };
+type PublicLibrary = { state: 'public' | 'private' | 'unknown'; profile: { personaName: string } | null; games: Game[]; message: string | null };
 
 export default function PublicLibraryPage({ params }: { params: Promise<{ steamid: string }> }) {
   const [library, setLibrary] = useState<PublicLibrary | null>(null);
@@ -29,8 +29,7 @@ export default function PublicLibraryPage({ params }: { params: Promise<{ steami
     </BrowserWindow>
     {error && <p role="alert" className="font-bold text-black">{error}</p>}
     {!library && !error && <p className="text-black">Loading Steam library...</p>}
-    {library?.state === 'unknown' && <p className="text-black font-bold">Steam profile not found. Check the Steam ID and try again.</p>}
-    {library?.state === 'private' && <p className="text-black font-bold">This library is private or Steam is not sharing its games. The owner can set Game details to Public in Steam privacy settings.</p>}
+    {library?.message && <p className="text-black font-bold">{library.message}</p>}
     {library?.state === 'public' && library.games.length === 0 && <p className="text-black font-bold">This public library has no games.</p>}
     {library?.state === 'public' && library.games.length > 0 && <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2"><GameList games={library.games} onFilteredGamesChange={setFiltered} /></div>
