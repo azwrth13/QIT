@@ -6,6 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import BrowserWindow from './components/BrowserWindow';
 import { useFetchUserProfile } from './navbar/hooks/useFetchUserProfile';
+import { isSteamIdOrProfileUrl } from '../lib/steam';
 
 interface SteamProfile {
   steamId: string;
@@ -54,7 +55,7 @@ export default function Home() {
 
   const matchingFriends = friends.filter(friend => friend.personaName.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const suggestionMessage = friendsLoading ? 'Loading Steam friends…' :
-    friendsMessage ?? (matchingFriends.length === 0 ? 'No friends match your search.' : null);
+    friendsMessage ?? (matchingFriends.length === 0 && !isSteamIdOrProfileUrl(query) ? 'No friends match your search.' : null);
   const chooseFriend = (friend: SteamProfile) => {
     setQuery(friend.steamId);
     setProfile(friend);

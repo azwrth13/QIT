@@ -79,6 +79,11 @@ export function parseSteamSearch(input: string): { steamId: string } | { vanity:
   return null;
 }
 
+export function isSteamIdOrProfileUrl(input: string): boolean {
+  const parsed = parseSteamSearch(input);
+  return parsed !== null && ('steamId' in parsed || parsed.vanity !== input.trim());
+}
+
 import type { Game } from './games';
 
 export interface SteamProfile {
