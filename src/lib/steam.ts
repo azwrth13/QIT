@@ -80,8 +80,8 @@ export function parseSteamSearch(input: string): { steamId: string } | { vanity:
 }
 
 export function isSteamIdOrProfileUrl(input: string): boolean {
-  const parsed = parseSteamSearch(input);
-  return parsed !== null && ('steamId' in parsed || parsed.vanity !== input.trim());
+  const cleaned = input.trim().toLowerCase();
+  return /^\d+$/.test(cleaned) || /^(http|www\.|steamcommunity|s\.team|steam\.me)/.test(cleaned) || cleaned.includes('/');
 }
 
 import type { Game } from './games';

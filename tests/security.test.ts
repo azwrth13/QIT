@@ -81,10 +81,10 @@ describe('Steam inputs and URLs', () => {
     }
   });
   it('distinguishes Steam IDs and profile URLs from name-like queries', () => {
-    for (const lookup of [steamId, ` ${steamId} `, `https://steamcommunity.com/profiles/${steamId}/`, 'steamcommunity.com/id/my-name', `steam.me/${steamId}`]) {
+    for (const lookup of [steamId, ` ${steamId} `, `https://steamcommunity.com/profiles/${steamId}/`, 'steamcommunity.com/id/my-name', `steam.me/${steamId}`, '7656', '7656119800', 'http', 'HTTPS://steam', 'www.', 'steamcommunity.com/id/', 's.team/p/', 'steam.me', 'id/my']) {
       expect(isSteamIdOrProfileUrl(lookup)).toBe(true);
     }
-    for (const name of ['', 'alice', 'my_name', 'Cool Gamer', '7656']) {
+    for (const name of ['', 'alice', 'my_name', 'Cool Gamer', 'player1', 'steamy']) {
       expect(isSteamIdOrProfileUrl(name)).toBe(false);
     }
   });
