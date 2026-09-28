@@ -115,6 +115,21 @@ export async function getSteamGames(steamId: string): Promise<Game[] | null> {
   }));
 }
 
+export type AchievementProgress = { unlocked: number; total: number; percent: number };
+
+export async function getAchievementProgress(steamId: string, appid: number): Promise<AchievementProgress | null> {
+  if (!isSteamId(steamId)) return null;
+  const data = await steamJson<{ playerstats?: {
+    success?: boolean;
+    achievements?: Array<{ achieved?: number }>;
+  } }>(steamApiUrl('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: steamId, appid: String(appid) }));
+  const stats = data.playerstats;
+  if (!stats?.success || !Array.isArray(stats.achievements) || stats.achievements.length === 0) return null;
+  const total = stats.achievements.length;
+  const unlocked = stats.achievements.filter(achievement => achievement.achieved === 1).length;
+  return { unlocked, total, percent: Math.round((unlocked / total) * 100) };
+}
+
 export async function getPublicLibrary(steamId: string) {
   if (!isSteamId(steamId)) return { state: 'unknown' as const, profile: null, games: [] };
   const profile = await getSteamProfile(steamId);
