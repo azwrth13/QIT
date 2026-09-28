@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { clientIpFromForwardedFor } from '@/lib/client-ip';
 import { isSteamId, logServerError, parseSteamSearch, steamApiUrl, steamJson } from '@/lib/steam';
 import { SteamProfileResponse } from '@/types/api';
 
@@ -18,7 +19,7 @@ function prune<T>(map: Map<string, T>, expired: (value: T) => boolean) {
 }
 
 function rateLimited(req: Request, now: number): boolean {
-  const ip = req.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() || 'unknown';
+  const ip = clientIpFromForwardedFor(req.headers);
   const entry = requests.get(ip);
   if (entry && now - entry.start < RATE_WINDOW_MS) return ++entry.count > RATE_LIMIT;
   requests.delete(ip);
