@@ -8,9 +8,10 @@ import BrowserWindow from '../../components/BrowserWindow';
 
 interface RandomGamePickerProps {
   games: Game[];
+  showLaunchButton?: boolean;
 }
 
-const RandomGamePicker = memo(function RandomGamePicker({ games }: RandomGamePickerProps) {
+const RandomGamePicker = memo(function RandomGamePicker({ games, showLaunchButton = false }: RandomGamePickerProps) {
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
 
   const pickRandomGame = useCallback(() => {
@@ -71,14 +72,24 @@ const RandomGamePicker = memo(function RandomGamePicker({ games }: RandomGamePic
               <p className="text-sm text-black font-bold">
                 Playtime: {formatPlaytime(selectedGame.playtime_forever)}
               </p>
-              <a
-                href={`https://store.steampowered.com/app/${selectedGame.appid}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block mt-2 text-sm text-black hover:text-black transition-colors font-bold underline"
-              >
-                View on Steam →
-              </a>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                {showLaunchButton && (
+                  <a
+                    href={`steam://run/${selectedGame.appid}`}
+                    className="inline-block bg-neobrutal-yellow hover:bg-neobrutal-pink border-4 border-black shadow-neobrutal px-4 py-2 text-black font-bold transition-colors"
+                  >
+                    Play / Launch in Steam
+                  </a>
+                )}
+                <a
+                  href={`https://store.steampowered.com/app/${selectedGame.appid}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-black hover:text-black transition-colors font-bold underline"
+                >
+                  View on Steam →
+                </a>
+              </div>
             </div>
           </div>
         </div>
