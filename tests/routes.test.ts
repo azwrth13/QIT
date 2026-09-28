@@ -226,6 +226,12 @@ describe('achievement progress route', () => {
     expect(log).toHaveBeenCalledWith('Achievement lookup failed', { name: 'Error' });
     log.mockRestore();
   });
+  it.each(['no achievements', 'private stats'])('quietly returns no progress for %s', async () => {
+    getCachedAchievementProgress.mockResolvedValue(null);
+    const response = await achievements(achievementRequest());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ progress: null });
+  });
   it('returns mapped progress for an owned game', async () => {
     getCachedAchievementProgress.mockResolvedValue({ unlocked: 6, total: 10, percent: 60 });
     const response = await achievements(achievementRequest());
