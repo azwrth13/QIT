@@ -18,10 +18,8 @@ export function steamApiUrl(path: string, params: Record<string, string>): URL {
   return url;
 }
 
-export async function steamJson<T>(url: URL, acceptedStatusesOrTimeout: number[] | number = [], timeoutMs = 15000): Promise<T> {
-  const acceptedStatuses = Array.isArray(acceptedStatusesOrTimeout) ? acceptedStatusesOrTimeout : [];
-  const timeout = typeof acceptedStatusesOrTimeout === 'number' ? acceptedStatusesOrTimeout : timeoutMs;
-  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(timeout) });
+export async function steamJson<T>(url: URL, timeoutMs = 15000, acceptedStatuses: number[] = []): Promise<T> {
+  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
   if (!response.ok && !acceptedStatuses.includes(response.status)) throw new SteamApiError(response.status);
   return response.json() as Promise<T>;
 }
@@ -126,7 +124,7 @@ export async function getAchievementProgress(steamId: string, appid: number): Pr
   const data = await steamJson<{ playerstats?: {
     success?: boolean;
     achievements?: Array<{ achieved?: number }>;
-  } } | null>(steamApiUrl('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: steamId, appid: String(appid) }), [400, 403]);
+  } } | null>(steamApiUrl('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: steamId, appid: String(appid) }), undefined, [400, 403]);
   const stats = data?.playerstats;
   if (stats?.success === false) return null;
   if (stats?.success !== true) throw new Error('Steam request failed');
