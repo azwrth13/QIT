@@ -176,6 +176,18 @@ describe('Steam friend suggestions', () => {
     expect(await response.json()).toEqual({ friends: [], message: expect.stringMatching(/private/i) });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    [{ friendslist: { friends: [] } }, /no Steam friends/i],
+    [{}, /private or unavailable/i],
+  ])('explains a successful Steam response with no suggestions', async (steamResponse, message) => {
+    const owner = 'friendslist' in steamResponse ? '76561198000000005' : '76561198000000006';
+    cookieValues.set(SESSION_COOKIE, await createSession(owner));
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(steamResponse));
+    const response = await friends();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ friends: [], message: expect.stringMatching(message) });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it('maps friends to search result profiles and caches per signed-in user', async () => {
     const owner = '76561198000000002';
     const friendId = '76561198000000003';

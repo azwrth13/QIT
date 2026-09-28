@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sealData } from 'iron-session';
 import { createSession, SESSION_TTL, verifySession } from '../src/lib/session';
-import { getAchievementProgress, isSteamId, logServerError, OPENID_ENDPOINT, OPENID_NAMESPACE, parseSteamSearch, steamApiUrl, validateOpenId } from '../src/lib/steam';
+import { getAchievementProgress, isSteamId, logServerError, OPENID_ENDPOINT, OPENID_NAMESPACE, isSteamIdOrProfileUrl, parseSteamSearch, steamApiUrl, validateOpenId } from '../src/lib/steam';
 import { MAX_GENRE_APPIDS, validateAppIds } from '../src/lib/genres';
 
 const steamId = '76561198000000000';
@@ -78,6 +78,14 @@ describe('Steam inputs and URLs', () => {
     expect(parseSteamSearch(' my_name ')).toEqual({ vanity: 'my_name' });
     for (const invalid of ['https://evil.example/steamcommunity.com/profiles/' + steamId, 'https://steamcommunity.com.evil.example/id/name', 'https://steamcommunity.com/profiles/123', 'https://steamcommunity.com/id/name?key=other']) {
       expect(parseSteamSearch(invalid)).toBeNull();
+    }
+  });
+  it('distinguishes Steam IDs and profile URLs from name-like queries', () => {
+    for (const lookup of [steamId, ` ${steamId} `, `https://steamcommunity.com/profiles/${steamId}/`, 'steamcommunity.com/id/my-name', `steam.me/${steamId}`, '7656', '7656119800', 'http', 'HTTPS://steam', 'www.', 'steamcommunity.com/id/', 's.team/p/', 'steam.me', 'id/my']) {
+      expect(isSteamIdOrProfileUrl(lookup)).toBe(true);
+    }
+    for (const name of ['', 'alice', 'my_name', 'Cool Gamer', 'player1', 'steamy']) {
+      expect(isSteamIdOrProfileUrl(name)).toBe(false);
     }
   });
   it('encodes API parameters and rejects invalid IDs before requests', () => {

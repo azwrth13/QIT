@@ -19,7 +19,11 @@ async function lookup(steamId: string): Promise<Result> {
     }
     throw error;
   }
+  if (!list.friendslist) {
+    return { friends: [], message: 'Your Steam friends list is private or unavailable. Make your friends list public in Steam to see suggestions.' };
+  }
   const ids = [...new Set((list.friendslist?.friends ?? []).map(friend => friend.steamid).filter(isSteamId))];
+  if (ids.length === 0) return { friends: [], message: 'No Steam friends to suggest yet.' };
   const players = [];
   for (let i = 0; i < ids.length; i += 100) {
     const batch = ids.slice(i, i + 100);
