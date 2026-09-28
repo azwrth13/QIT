@@ -19,6 +19,7 @@ import { GET as games } from '../src/app/api/games/route';
 import { GET as profile } from '../src/app/api/user/profile/route';
 import { GET as friend } from '../src/app/api/games/friend/route';
 import { GET as search } from '../src/app/api/steam/search/route';
+import { GET as friends } from '../src/app/api/steam/friends/route';
 import { POST as genres } from '../src/app/api/games/genres/route';
 
 const steamId = '76561198000000000';
@@ -127,6 +128,49 @@ describe('public profile search', () => {
     for (let i = 0; i < 20; i++) await freshSearch(searchRequest('bad input', '203.0.113.6'));
     for (let i = 5_000; i < 10_001; i++) await other(i);
     expect((await freshSearch(searchRequest('bad input', '203.0.113.6'))).status).toBe(429);
+  });
+});
+
+describe('Steam friend suggestions', () => {
+  beforeEach(() => vi.stubEnv('STEAM_API_KEY', 'test-key'));
+  it('requires a signed session before requesting Steam', async () => {
+    expect((await friends()).status).toBe(401);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('explains a private friends list without returning an error', async () => {
+    cookieValues.set(SESSION_COOKIE, await createSession(steamId));
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('', { status: 401 }));
+    const response = await friends();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ friends: [], message: expect.stringMatching(/private/i) });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('maps friends to search result profiles and caches per signed-in user', async () => {
+    const owner = '76561198000000002';
+    const friendId = '76561198000000003';
+    cookieValues.set(SESSION_COOKIE, await createSession(owner));
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(Response.json({ friendslist: { friends: [{ steamid: friendId }] } }))
+      .mockResolvedValueOnce(Response.json({ response: { players: [{ steamid: friendId, personaname: 'Friend', profileurl: `https://steamcommunity.com/profiles/${friendId}`, avatarfull: 'https://example.com/full.jpg', avatarmedium: 'https://example.com/medium.jpg' }] } }));
+    for (let i = 0; i < 2; i++) {
+      const response = await friends();
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ friends: [{ steamId: friendId, personaName: 'Friend', profileUrl: `https://steamcommunity.com/profiles/${friendId}`, avatarFull: 'https://example.com/full.jpg', avatarMedium: 'https://example.com/medium.jpg' }] });
+    }
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(new URL(String(vi.mocked(fetch).mock.calls[0][0])).searchParams.get('steamid')).toBe(owner);
+    expect(new URL(String(vi.mocked(fetch).mock.calls[1][0])).searchParams.get('steamids')).toBe(friendId);
+  });
+  it('batches more than 100 friends for player summaries', async () => {
+    const owner = '76561198000000004';
+    cookieValues.set(SESSION_COOKIE, await createSession(owner));
+    const ids = Array.from({ length: 101 }, (_, index) => `76561198${String(index + 100).padStart(9, '0')}`);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(Response.json({ friendslist: { friends: ids.map(steamid => ({ steamid })) } }))
+      .mockResolvedValueOnce(Response.json({ response: { players: ids.slice(0, 100).map(steamid => ({ steamid, personaname: steamid, profileurl: '', avatarfull: '' })) } }))
+      .mockResolvedValueOnce(Response.json({ response: { players: [{ steamid: ids[100], personaname: ids[100], profileurl: '', avatarfull: '' }] } }));
+    expect((await (await friends()).json()).friends).toHaveLength(101);
+    expect(vi.mocked(fetch).mock.calls.slice(1).map(([url]) => new URL(String(url)).searchParams.get('steamids')?.split(',').length)).toEqual([100, 1]);
   });
 });
 

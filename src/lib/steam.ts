@@ -8,9 +8,9 @@ export function isSteamId(value: unknown): value is SteamId {
 }
 
 export function steamApiUrl(path: string, params: Record<string, string>): URL {
-  for (const name of ['steamid', 'steamids']) {
-    if (name in params && !isSteamId(params[name])) throw new Error('Invalid Steam ID');
-  }
+  if ('steamid' in params && !isSteamId(params.steamid)) throw new Error('Invalid Steam ID');
+  if ('steamids' in params && (params.steamids.split(',').length > 100 ||
+    !params.steamids.split(',').every(isSteamId))) throw new Error('Invalid Steam ID');
   const key = process.env.STEAM_API_KEY;
   if (!key) throw new Error('Steam API key not configured');
   const url = new URL(path, 'https://api.steampowered.com');
@@ -20,8 +20,16 @@ export function steamApiUrl(path: string, params: Record<string, string>): URL {
 
 export async function steamJson<T>(url: URL): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error('Steam request failed');
+  if (!response.ok) throw new SteamApiError(response.status);
   return response.json() as Promise<T>;
+}
+
+export class SteamApiError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super('Steam request failed');
+    this.status = status;
+  }
 }
 
 // Never pass messages, stacks, URLs, payloads or arbitrary error fields to logs.
