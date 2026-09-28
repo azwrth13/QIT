@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSteamId } from '@/lib/auth';
 import { logServerError } from '@/lib/steam';
-import { AUTO_SYNC_COOKIE, getStoredGames } from '@/lib/library-data';
+import { AUTO_SYNC_COOKIE, getStoredGames, getLastSyncedAt } from '@/lib/library-data';
 import { sessionCookieOptions } from '@/lib/session';
 
 export async function GET() {
@@ -11,7 +11,7 @@ export async function GET() {
   try {
     const cookieStore = await cookies();
     const games = await getStoredGames(steamId);
-    const lastSynced = cookieStore.get('library-synced')?.value || null;
+    const lastSynced = await getLastSyncedAt(steamId);
     const signedInNow = cookieStore.get(AUTO_SYNC_COOKIE) !== undefined;
     const response = NextResponse.json({ games, lastSynced, autoSync: signedInNow || (games.length === 0 && !lastSynced) });
     if (signedInNow) response.cookies.set(AUTO_SYNC_COOKIE, '', { ...sessionCookieOptions, maxAge: 0 });

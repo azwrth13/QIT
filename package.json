@@ -8,15 +8,14 @@
     "start": "next start",
     "lint": "eslint . --ext .js,.mjs,.ts,.mts,.tsx --ignore-pattern .next --ignore-pattern next-env.d.ts --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run tests/*.test.ts && node --experimental-strip-types --test tests/library.test.mjs",
-    "postinstall": "prisma generate"
+    "test": "vitest run tests/client-ip.test.ts tests/routes.test.ts tests/security.test.ts && node --experimental-strip-types --test tests/library.test.mjs",
+    "test:firestore": "firebase emulators:exec --only firestore 'npx vitest run tests/firestore.test.ts'"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "firebase-admin": "^13.10.0",
     "iron-session": "^9.0.1",
     "lucide-react": "^0.460.0",
     "next": "^15.5.26",
-    "prisma": "^5.22.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
@@ -33,7 +32,7 @@
     "vitest": "^5.0.2"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.13.0 <23"
   },
   "overrides": {
     "postcss": "$postcss"
