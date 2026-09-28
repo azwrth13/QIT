@@ -6,6 +6,17 @@
       "ignore": ["node_modules", ".git", ".next", "firebase-debug.log"]
     }
   ],
+  "hosting": {
+    "site": "REPLACE_WITH_HOSTING_SITE_ID",
+    "public": "hosting",
+    "ignore": ["**/.*"],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": { "serviceId": "qit", "region": "us-central1" }
+      }
+    ]
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

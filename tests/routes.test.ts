@@ -44,6 +44,9 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('route authentication', () => {
+  it('uses the only cookie name Firebase Hosting forwards to Cloud Run', () => {
+    expect(SESSION_COOKIE).toBe('__session');
+  });
   it.each(['missing', 'unsigned', 'forged'])('rejects %s credentials before DB or Steam calls', async credential => {
     if (credential === 'unsigned') cookieValues.set('steamid', steamId);
     if (credential === 'forged') cookieValues.set(SESSION_COOKIE, steamId);
@@ -322,6 +325,7 @@ describe('OpenID callback route', () => {
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe('https://qit.example/library');
     const session = response.cookies.get(SESSION_COOKIE);
+    expect(response.cookies.get('qit_session')).toBeUndefined();
     expect(await verifySession(session?.value)).toBe(steamId);
     expect(session).toMatchObject({ httpOnly: true, sameSite: 'lax', path: '/' });
     expect(response.cookies.get('library-autosync')?.value).toBe('1');

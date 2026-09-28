@@ -1,7 +1,7 @@
 import { sealData, unsealData } from 'iron-session';
 import { isSteamId } from './steam';
 
-export const SESSION_COOKIE = 'qit_session';
+export const SESSION_COOKIE = '__session';
 export const SESSION_TTL = 60 * 60 * 24 * 7;
 export const sessionCookieOptions = {
   httpOnly: true,
