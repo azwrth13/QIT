@@ -1,6 +1,6 @@
 # QIT
 
-QIT picks a random game from a filtered Steam library. Visitors can browse public Steam libraries without signing in. Steam sign-in saves the user's profile and syncs their library into Firestore. A library can be refreshed from its page.
+QIT picks a random game from a filtered Steam library. Visitors can browse public Steam libraries without signing in. Steam sign-in saves the user's profile and syncs their library into Firestore. A library can be refreshed from its page. On their own library, signed-in users can launch the picked game directly in the Steam client through a `steam://run/<appid>` link.
 
 ## Local development
 
