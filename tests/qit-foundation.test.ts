@@ -84,7 +84,6 @@ describe('with param', () => {
     expect(parseWithParam(`${id(1)},${id(2)}`)).toEqual([id(1), id(2)]);
     expect(parseWithParam([`${id(1)}`, ` ${id(2)} ,${id(1)}`])).toEqual([id(1), id(2)]);
     expect(parseWithParam(`123,${id(3)},abc,,${id(4)}x`)).toEqual([id(3)]);
-    expect(parseWithParam(`${id(1)},${id(2)}`, { self: id(1) })).toEqual([id(2)]);
     expect(parseWithParam(null)).toEqual([]);
     expect(parseWithParam(undefined)).toEqual([]);
     expect(parseWithParam('')).toEqual([]);

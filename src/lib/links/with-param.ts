@@ -11,14 +11,14 @@ type ParamValue = string | string[] | null | undefined;
 
 /**
  * Reads Steam IDs from a `with` value (a string, repeated params from Next `searchParams`, or
- * `URLSearchParams.get`). Invalid entries, duplicates and `self` are dropped; order is kept.
+ * `URLSearchParams.get`). Invalid entries and duplicates are dropped; order is kept.
  */
-export function parseWithParam(value: ParamValue, options: { self?: string } = {}): string[] {
+export function parseWithParam(value: ParamValue): string[] {
   const raw = (Array.isArray(value) ? value : [value ?? '']).flatMap(part => part.split(','));
   const ids: string[] = [];
   for (const entry of raw) {
     const id = entry.trim();
-    if (isSteamId(id) && id !== options.self && !ids.includes(id)) ids.push(id);
+    if (isSteamId(id) && !ids.includes(id)) ids.push(id);
     if (ids.length === MAX_WITH_IDS) break;
   }
   return ids;

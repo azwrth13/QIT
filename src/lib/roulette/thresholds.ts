@@ -33,5 +33,3 @@ export const THRESHOLDS: Readonly<Thresholds> = Object.freeze({
   // The sampler draws with probability proportional to weight ^ gamma.
   samplerGamma: 1.5,
 });
-
-export const DAY_SECONDS = 24 * 60 * 60;

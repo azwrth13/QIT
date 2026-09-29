@@ -31,7 +31,7 @@ Each file starts as a `stubMode` or `stubFilter` with `stub: true`. A stub's `sc
 Pages hand a friend selection to another page as `?with=<steamid>,<steamid>`, for example `/friend-night?with=76561198000000001,76561198000000002`.
 
 - Build links with `withHref(path, ids)`. It keeps other query params and the hash, and it drops the param when the selection is empty.
-- Read with `parseWithParam(value, { self })`. It accepts a string, repeated params (Next `searchParams`) or `null`. It drops invalid ids, duplicates and the viewer's own id, keeps order, and caps the list at `MAX_WITH_IDS` (16) so a crafted link cannot fan out into unbounded Steam lookups. The consuming page may apply a lower product limit.
+- Read with `parseWithParam(value)`. It accepts a string, repeated params (Next `searchParams`) or `null`. It drops invalid ids and duplicates, keeps order, and caps the list at `MAX_WITH_IDS` (16) so a crafted link cannot fan out into unbounded Steam lookups. The consuming page may apply a lower product limit.
 
 ## Tests
 
