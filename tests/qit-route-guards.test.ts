@@ -43,7 +43,19 @@ describe('createLimiter', () => {
     expect(res?.status).toBe(429);
     expect(res?.headers.get('retry-after')).toBe('2');
     expect(checkRateLimit(req, '2', limits, 0)).toBeNull();
-    expect(checkRateLimit(req, '3', limits, 0)?.status).toBe(429);
+    expect(checkRateLimit(req, '3', limits, 0)).toBeNull();
+    expect(checkRateLimit(req, '4', limits, 0)?.status).toBe(429);
+  });
+  it('checkRateLimit spends from neither bucket when one denies', () => {
+    const limits = { user: createLimiter({ capacity: 1, refillPerSecond: 0.1 }), ip: createLimiter({ capacity: 1, refillPerSecond: 0.1 }) };
+    const ipA = new Request('https://qit.test', { headers: { 'x-forwarded-for': '203.0.113.1' } });
+    const ipB = new Request('https://qit.test', { headers: { 'x-forwarded-for': '203.0.113.2' } });
+    expect(checkRateLimit(ipA, '1', limits, 0)).toBeNull();
+    expect(checkRateLimit(ipA, '2', limits, 0)?.status).toBe(429);
+    expect(limits.user.peek('u:2', 0)).toBe(0);
+    expect(checkRateLimit(ipB, '1', limits, 0)?.status).toBe(429);
+    expect(limits.ip.peek('i:203.0.113.2', 0)).toBe(0);
+    expect(checkRateLimit(ipB, '2', limits, 0)).toBeNull();
   });
 });
 
