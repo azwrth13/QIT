@@ -49,7 +49,7 @@ Both methods have per-user and per-IP token buckets. Rolls are only ever read an
 
 ## Indexes
 
-No composite indexes. Every query uses one field: `rolls` is ordered by `at` (with a range on `at`, and the document id as a tiebreak in the same direction), and `events` is either ordered by `at` or filtered by `type`.
+No composite indexes. The only queries are on `rolls`, ordered by `at` (with a range on `at`, and the document id as a tiebreak in the same direction). `events` is write-only here; a package that queries it by type and recency adds the composite index it needs.
 
 ## Tests
 
