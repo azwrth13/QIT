@@ -96,7 +96,8 @@ describe.skipIf(!emulated)('friend libraries (emulator)', () => {
     const qit = freshUser();
     const hidden = freshUser();
     const unsynced = freshUser();
-    for (const [id, isPublic] of [[qit, true], [hidden, false], [unsynced, true]] as const) await db.doc(paths.user(id)).set({ steamId: id, public: isPublic });
+    const lastSyncedAt = new Date().toISOString();
+    for (const [id, isPublic] of [[qit, true], [hidden, false], [unsynced, true]] as const) await db.doc(paths.user(id)).set({ steamId: id, public: isPublic, lastSyncedAt });
     for (const id of [qit, hidden]) await patchLibIndex(id, { 620: { n: 'Portal 2', p: 90 }, 730: { n: 'CS2', p: 0 } }, { create: true });
     const world = steam(url => url.pathname.includes('GetPlayerSummaries')
       ? { response: { players: url.searchParams.get('steamids')!.split(',').map(id => summaryOf(id)) } }
@@ -112,7 +113,7 @@ describe.skipIf(!emulated)('friend libraries (emulator)', () => {
 
   it('marks a QIT user not public when the refresh of a stale index finds the library private', async () => {
     const stale = freshUser();
-    await db.doc(paths.user(stale)).set({ steamId: stale, public: true });
+    await db.doc(paths.user(stale)).set({ steamId: stale, public: true, lastSyncedAt: new Date().toISOString() });
     await patchLibIndex(stale, { 620: { n: 'Portal 2', p: 90 } }, { create: true });
     const world = steam(url => url.pathname.includes('GetPlayerSummaries')
       ? { response: { players: [summaryOf(stale, { communityvisibilitystate: 1 })] } }
@@ -121,6 +122,17 @@ describe.skipIf(!emulated)('friend libraries (emulator)', () => {
     expect(library).toMatchObject({ state: 'private', source: 'steam' });
     expect((await db.doc(paths.user(stale)).get()).data()?.public).toBe(false);
     expect(await store.readQitLibraries([stale])).toEqual(new Map());
+  });
+
+  it('uses the index when a recent sync found no changes, even though the index was written long ago', async () => {
+    const id = freshUser();
+    await patchLibIndex(id, { 620: { n: 'Portal 2', p: 90 } }, { create: true });
+    const later = Date.now() + 2 * 24 * 3_600_000;
+    await db.doc(paths.user(id)).set({ steamId: id, public: true, lastSyncedAt: new Date(later - 60_000).toISOString() });
+    const world = steam(() => { throw new Error('Steam should not be called'); });
+    const [library] = await getLibraryFor([id], { client: world.client, now: () => later });
+    expect(library).toMatchObject({ state: 'ok', source: 'qit', fetchedAt: later - 60_000 });
+    expect(world.calls).toEqual([]);
   });
 
   it('caches an 8,000-game Steam library in one document and serves it back without Steam', async () => {

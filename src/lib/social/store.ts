@@ -14,8 +14,8 @@ import { isSteamId } from '../steam';
 
 export interface QitLibrary {
   games: Map<number, LibIndexEntry>;
-  /** When the index was last written (ms), or null when unknown. */
-  updatedAt: number | null;
+  /** When the library was last synced from Steam (ms, `users/{id}.lastSyncedAt`), or null when unknown. */
+  syncedAt: number | null;
 }
 
 export interface SocialStore {
@@ -128,11 +128,16 @@ export const firestoreSocialStore: SocialStore = {
   async readQitLibraries(ids) {
     const users = await getAllInGroups(ids.map(id => db.doc(paths.user(id))));
     // `public` is what the last sign-in or library refresh saw. When it says private, ask Steam instead of trusting an older index.
-    const candidates = ids.filter((_, index) => users[index].exists && users[index].data()?.public !== false);
+    const candidates = ids.flatMap((id, index) => {
+      const data = users[index].data();
+      if (!data || data.public === false) return [];
+      const syncedAt = typeof data.lastSyncedAt === 'string' ? Date.parse(data.lastSyncedAt) : NaN;
+      return [{ id, syncedAt: Number.isFinite(syncedAt) ? syncedAt : null }];
+    });
     const libraries = new Map<string, QitLibrary>();
-    await Promise.all(candidates.map(async id => {
+    await Promise.all(candidates.map(async ({ id, syncedAt }) => {
       const index = await readLibIndex(id);
-      if (index.built) libraries.set(id, { games: index.entries, updatedAt: index.updatedAt?.getTime() ?? null });
+      if (index.built) libraries.set(id, { games: index.entries, syncedAt });
     }));
     return libraries;
   },

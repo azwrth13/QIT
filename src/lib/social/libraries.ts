@@ -31,7 +31,7 @@ export interface FriendLibrary {
   source: 'qit' | 'steam';
   /** Games by appid. Empty unless `state` is `ok`. */
   games: Map<number, LibIndexEntry>;
-  /** When the data was read (ms): the index's last write, or the Steam fetch. Null when unknown. */
+  /** When the data was read (ms): the QIT user's last sync, or the Steam fetch. Null when unknown. */
   fetchedAt: number | null;
 }
 
@@ -165,8 +165,8 @@ export async function getLibraryFor(ids: readonly string[], socialDeps: SocialDe
   const found = new Map<string, FriendLibrary>();
   const qit = await bestEffort('QIT library index read failed', () => store.readQitLibraries(unique), new Map());
   for (const [steamId, library] of qit) {
-    const age = library.updatedAt === null ? Infinity : now() - library.updatedAt;
-    if (age >= 0 && age <= QIT_INDEX_MAX_AGE_MS) found.set(steamId, { steamId, state: 'ok', source: 'qit', games: library.games, fetchedAt: library.updatedAt });
+    const age = library.syncedAt === null ? Infinity : now() - library.syncedAt;
+    if (age >= 0 && age <= QIT_INDEX_MAX_AGE_MS) found.set(steamId, { steamId, state: 'ok', source: 'qit', games: library.games, fetchedAt: library.syncedAt });
   }
 
   const others = unique.filter(id => !found.has(id));

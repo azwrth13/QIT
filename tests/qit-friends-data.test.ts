@@ -403,7 +403,7 @@ describe('getLibraryFor', () => {
   it('returns a state per player, in the order asked, with QIT users from the library index', async () => {
     const steam = world();
     const { store, state } = memoryStore();
-    state.qit.set(qitUser, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike', p: 5 }]]), updatedAt: NOW - 1000 });
+    state.qit.set(qitUser, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike', p: 5 }]]), syncedAt: NOW - 1000 });
     const ids = [publicUser, qitUser, privateProfile, privateGames, missing, broken, publicUser];
     const libraries = await getLibraryFor(ids, { store, client: steam.client, now: () => NOW });
     expect(libraries.map(library => [library.steamId, library.state, library.source])).toEqual([
@@ -422,7 +422,7 @@ describe('getLibraryFor', () => {
   it('refreshes a QIT index older than 30 minutes from Steam', async () => {
     const steam = world();
     const { store, state } = memoryStore();
-    state.qit.set(publicUser, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), updatedAt: NOW - QIT_INDEX_MAX_AGE_MS - 1 });
+    state.qit.set(publicUser, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), syncedAt: NOW - QIT_INDEX_MAX_AGE_MS - 1 });
     const [library] = await getLibraryFor([publicUser], { store, client: steam.client, now: () => NOW });
     expect(library).toMatchObject({ state: 'ok', source: 'steam' });
     expect([...library.games.keys()]).toEqual([620, 730]);
@@ -436,7 +436,7 @@ describe('getLibraryFor', () => {
   ] as const)('leaves out a stale QIT user whose refresh is %s, and stops reusing their index', async (expected, id) => {
     const steam = world();
     const { store, state } = memoryStore();
-    state.qit.set(id, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), updatedAt: NOW - QIT_INDEX_MAX_AGE_MS - 1 });
+    state.qit.set(id, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), syncedAt: NOW - QIT_INDEX_MAX_AGE_MS - 1 });
     const [library] = await getLibraryFor([id], { store, client: steam.client, now: () => NOW });
     expect(library).toMatchObject({ state: expected, source: 'steam' });
     expect(library.games.size).toBe(0);
@@ -447,8 +447,8 @@ describe('getLibraryFor', () => {
   it('getSteamLibrary reads from Steam and never from a stored QIT index', async () => {
     const steam = world();
     const { store, state } = memoryStore();
-    state.qit.set(privateGames, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), updatedAt: NOW });
-    state.qit.set(publicUser, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), updatedAt: NOW });
+    state.qit.set(privateGames, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), syncedAt: NOW });
+    state.qit.set(publicUser, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), syncedAt: NOW });
     const deps = { store, client: steam.client, now: () => NOW };
     expect(await getSteamLibrary(privateGames, deps)).toMatchObject({ state: 'private', source: 'steam' });
     const library = await getSteamLibrary(publicUser, deps);
