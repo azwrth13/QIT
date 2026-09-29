@@ -87,7 +87,7 @@ it('caches Steam no-stats and private achievement responses but not other failur
 });
 
 it('returns fetched achievement progress when the cache write fails', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ playerstats: { success: true, achievements: [{ achieved: 1 }, { achieved: 0 }] } })));
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ playerstats: { success: true, achievements: [{ apiname: 'A', achieved: 1 }, { apiname: 'B', achieved: 0 }] } })));
   const ref = db.doc(`users/${steamId}/achievementProgress/200005`);
   const set = vi.spyOn(Object.getPrototypeOf(ref), 'set').mockRejectedValueOnce(new Error('write failed'));
   const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
