@@ -1,3 +1,4 @@
+import { STORE_FLAG_BITS } from '../apps/metadata';
 import type { AchievementSignals } from '../roulette/types';
 import type { AchievementProgress } from '../steam';
 import type { PlayerAchievementsResult } from '../steam/achievements';
@@ -10,17 +11,19 @@ import type { LibIndexPatch } from '../store/lib-index';
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
-/**
- * Freshness per state (report section 3). Achievements can be private while owned games are public (live check in
- * docs/features/qit-steam-client.md), and a user who sees "your achievements are private" can fix that in a minute,
- * so a private answer is cached only briefly; "no stats" is a property of the app and is cached for the full week.
- */
+/** Freshness of a per-game record (report section 3); "no stats" is a property of the app, cached for the week. */
 export const ACHIEVEMENT_TTL_MS = {
   inProgress: DAY,
   complete: 30 * DAY,
   noStats: 7 * DAY,
-  private: HOUR,
 } as const;
+
+/**
+ * How long a 403 "Profile is not public" answer keeps a user's achievements private without asking Steam again. It
+ * is a fact about the profile, not a game, so it is recorded once per user, and a user who fixes the setting is
+ * picked up within the hour at a cost of at most one key call per user per hour.
+ */
+export const PRIVATE_RECHECK_MS = HOUR;
 
 /** Locked achievements kept per game, with capped text, so one document stays far below Firestore's 1 MiB. */
 export const MAX_LOCKED_STORED = 1000;
@@ -28,7 +31,7 @@ const MAX_NAME_CHARS = 128;
 const MAX_DESCRIPTION_CHARS = 256;
 const MAX_APINAME_CHARS = 128;
 
-export type AchievementState = 'ok' | 'no_stats' | 'private';
+export type AchievementState = 'ok' | 'no_stats';
 
 export interface LockedAchievement {
   apiname: string;
@@ -62,7 +65,6 @@ export interface AchievementRecord {
 const clip = (value: string, max: number) => value.length > max ? value.slice(0, max) : value;
 
 export function ttlFor(state: AchievementState, progress: AchievementProgress | null): number {
-  if (state === 'private') return ACHIEVEMENT_TTL_MS.private;
   if (state === 'no_stats' || !progress) return ACHIEVEMENT_TTL_MS.noStats;
   return progress.unlocked >= progress.total ? ACHIEVEMENT_TTL_MS.complete : ACHIEVEMENT_TTL_MS.inProgress;
 }
@@ -72,7 +74,10 @@ export function progressOf(unlocked: number, total: number): AchievementProgress
   return { unlocked, total, percent: Math.floor((unlocked / total) * 100) };
 }
 
-export function buildAchievementRecord(result: PlayerAchievementsResult, now: number): AchievementRecord {
+/** A per-game answer; a private answer is recorded per user instead (see PRIVATE_RECHECK_MS). */
+export type GameAchievementsResult = Exclude<PlayerAchievementsResult, { state: 'private' }>;
+
+export function buildAchievementRecord(result: GameAchievementsResult, now: number): AchievementRecord {
   const base = { v: 2 as const, fetchedAt: new Date(now).toISOString() };
   if (result.state !== 'ok') {
     return { ...base, state: result.state, progress: null, locked: [], lockedTruncated: false, lastUnlockAt: null,
@@ -99,16 +104,12 @@ export function isFresh(record: Pick<AchievementRecord, 'expiresAtMs'> | null, n
   return !!record && record.expiresAtMs > now;
 }
 
-/**
- * The library index summary for a record: `ap/au/at` for known progress, `at: 0` for a game known to have no
- * achievements, and all three cleared (unknown) when the answer was private.
- */
+/** The library index summary for a record: `ap/au/at` for known progress, `at: 0` for a game known to have none. */
 export function indexPatchFor(record: Pick<AchievementRecord, 'state' | 'progress'>): LibIndexPatch {
   if (record.state === 'ok' && record.progress) {
     return { ap: record.progress.percent, au: record.progress.unlocked, at: record.progress.total };
   }
-  if (record.state === 'no_stats') return { ap: null, au: null, at: 0 };
-  return { ap: null, au: null, at: null };
+  return { ap: null, au: null, at: 0 };
 }
 
 /** Whether an index entry already carries the summary of `record` (so no patch is needed). */
@@ -117,7 +118,7 @@ export function indexMatches(entry: Pick<LibIndexEntry, 'ap' | 'au' | 'at'>, rec
   return (['ap', 'au', 'at'] as const).every(field => (entry[field] ?? null) === (patch[field] ?? null));
 }
 
-/** Roulette signals for one game: null means no achievement data (no stats, private, or not scanned yet). */
+/** Roulette signals for one game: null means no achievement data (no stats or not scanned yet). */
 export function toAchievementSignals(record: Pick<AchievementRecord, 'state' | 'progress' | 'lastUnlockAt'> | null): AchievementSignals | null {
   if (!record || record.state !== 'ok' || !record.progress) return null;
   const { unlocked, total, percent } = record.progress;
@@ -134,13 +135,6 @@ export function achievementSignalsFromIndex(entry: Pick<LibIndexEntry, 'ap' | 'a
 // ---------------------------------------------------------------------------------------------------------------
 // Scan order and cursor
 
-/**
- * Bits of the index `f` field that the scan reads, as defined by qit-app-metadata (`STORE_FLAG_BITS` in
- * src/lib/apps/metadata.ts): `known` is set once Steam gave category data, `achievements` is store category 22.
- */
-const STORE_FLAG_KNOWN = 1 << 0;
-const STORE_FLAG_ACHIEVEMENTS = 1 << 6;
-
 /** An index entry as the scan reads it; `s` is qit-library-model's `has_community_visible_stats` (1 or 0). */
 export type ScanIndexEntry = Pick<LibIndexEntry, 'p' | 'f' | 'ap' | 'au' | 'at'> & { s?: number };
 
@@ -149,7 +143,7 @@ export type ScanIndexEntry = Pick<LibIndexEntry, 'p' | 'f' | 'ap' | 'au' | 'at'>
  * metadata is cached, else Steam's community-stats flag from the owned-games sync. null means unknown.
  */
 export function achievementSupportHint(entry: ScanIndexEntry): boolean | null {
-  if (typeof entry.f === 'number' && (entry.f & STORE_FLAG_KNOWN) !== 0) return (entry.f & STORE_FLAG_ACHIEVEMENTS) !== 0;
+  if (typeof entry.f === 'number' && (entry.f & STORE_FLAG_BITS.known) !== 0) return (entry.f & STORE_FLAG_BITS.achievements) !== 0;
   if (entry.s === 1) return true;
   if (entry.s === 0) return false;
   return null;

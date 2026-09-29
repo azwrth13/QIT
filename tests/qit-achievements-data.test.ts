@@ -9,16 +9,20 @@ import { fromStored } from '../src/lib/achievements/store';
 import { SteamClientError } from '../src/lib/steam/client';
 import type { PlayerAchievement } from '../src/lib/steam/achievements';
 
-const { getSteamId, readLibIndex, readAchievementRecords, fetchAchievementRecord, saveAchievementRecords } = vi.hoisted(() => ({
+const {
+  getSteamId, readLibIndex, readAchievementRecords, fetchAchievementRecord, saveAchievementRecords, isAchievementsPrivate, markAchievementsPrivate,
+} = vi.hoisted(() => ({
   getSteamId: vi.fn(), readLibIndex: vi.fn(), readAchievementRecords: vi.fn(), fetchAchievementRecord: vi.fn(), saveAchievementRecords: vi.fn(),
+  isAchievementsPrivate: vi.fn(), markAchievementsPrivate: vi.fn(),
 }));
 vi.mock('../src/lib/auth', () => ({ getSteamId }));
 vi.mock('../src/lib/store/lib-index', () => ({ readLibIndex }));
 vi.mock('../src/lib/achievements/store', async importOriginal => ({
   ...await importOriginal<typeof import('../src/lib/achievements/store')>(), readAchievementRecords, fetchAchievementRecord, saveAchievementRecords,
+  isAchievementsPrivate, markAchievementsPrivate,
 }));
 
-import { scanAchievements, SCAN_BATCH_SIZE, SCAN_EXAMINE_LIMIT } from '../src/lib/achievements/scan';
+import { scanAchievements, SCAN_EXAMINE_LIMIT } from '../src/lib/achievements/scan';
 import { POST } from '../src/app/api/achievements/scan/route';
 
 const steamId = '76561198000000042';
@@ -52,9 +56,8 @@ describe('achievement records', () => {
     expect(done.expiresAtMs).toBe(NOW + 30 * DAY);
     expect(done.locked).toEqual([]);
   });
-  it('caches no stats for a week and private achievements only briefly', () => {
+  it('caches no stats for a week', () => {
     expect(buildAchievementRecord({ state: 'no_stats' }, NOW)).toMatchObject({ state: 'no_stats', progress: null, locked: [], expiresAtMs: NOW + 7 * DAY });
-    expect(buildAchievementRecord({ state: 'private' }, NOW)).toMatchObject({ state: 'private', progress: null, expiresAtMs: NOW + HOUR });
   });
   it('caps the locked list and its text', () => {
     const many = [...Array(MAX_LOCKED_STORED + 5)].map((_, i) => achievement(`L${i}`, null, { name: 'n'.repeat(500), description: 'd'.repeat(500) }));
@@ -75,15 +78,13 @@ describe('achievement records', () => {
     const ok = buildAchievementRecord({ state: 'ok', achievements: [achievement('A', 10), achievement('B', null)] }, NOW);
     expect(indexPatchFor(ok)).toEqual({ ap: 50, au: 1, at: 2 });
     expect(indexPatchFor({ state: 'no_stats', progress: null })).toEqual({ ap: null, au: null, at: 0 });
-    expect(indexPatchFor({ state: 'private', progress: null })).toEqual({ ap: null, au: null, at: null });
     expect(toAchievementSignals(ok)).toEqual({ total: 2, unlocked: 1, percent: 50, lockedRare: null, lastUnlockAt: 10 });
     expect(toAchievementSignals(buildAchievementRecord({ state: 'no_stats' }, NOW))).toBeNull();
     expect(toAchievementSignals(null)).toBeNull();
     expect(indexMatches({ ap: 50, au: 1, at: 2, p: 5 } as object, ok)).toBe(true);
     expect(indexMatches({ ap: 50, au: 1 }, ok)).toBe(false);
     expect(indexMatches({ at: 0 }, { state: 'no_stats', progress: null })).toBe(true);
-    expect(indexMatches({}, { state: 'private', progress: null })).toBe(true);
-    expect(indexMatches({ at: 0 }, { state: 'private', progress: null })).toBe(false);
+    expect(indexMatches({}, { state: 'no_stats', progress: null })).toBe(false);
     expect(achievementSignalsFromIndex({ ap: 50, au: 1, at: 2 })).toEqual({ total: 2, unlocked: 1, percent: 50, lockedRare: null, lastUnlockAt: null });
     expect(achievementSignalsFromIndex({ at: 0 })).toBeNull();
     expect(achievementSignalsFromIndex({})).toBeNull();
@@ -106,6 +107,7 @@ describe('stored records', () => {
     expect(fromStored(undefined)).toBeNull();
     expect(fromStored({ progress: { unlocked: 1, total: 2, percent: 50 }, fetchedAt: new Date(NOW).toISOString() })).toBeNull();
     expect(fromStored(stored({ state: 'weird' }))).toBeNull();
+    expect(fromStored(stored({ state: 'private', progress: null }))).toBeNull();
     expect(fromStored(stored({ expiresAt: NOW }))).toBeNull();
     expect(fromStored(stored({ progress: null }))).toBeNull();
     expect(fromStored(stored({ progress: { unlocked: 3, total: 2, percent: 150 } }))).toBeNull();
@@ -152,7 +154,7 @@ const okRecord = (unlocked = 1, total = 2): AchievementRecord => ({
   v: 2, state: 'ok', progress: { unlocked, total, percent: Math.floor(unlocked / total * 100) }, locked: [], lockedTruncated: false,
   lastUnlockAt: null, fetchedAt: '', expiresAtMs: NOW + DAY,
 });
-const negative = (state: 'no_stats' | 'private'): AchievementRecord => ({ ...okRecord(), state, progress: null });
+const noStatsRecord = (): AchievementRecord => ({ ...okRecord(), state: 'no_stats', progress: null });
 
 /** A library of `count` games with descending playtime, so scan order is appid order. */
 function library(count: number, extra: Record<number, object> = {}) {
@@ -161,7 +163,8 @@ function library(count: number, extra: Record<number, object> = {}) {
 }
 
 let fresh: Set<number>;
-let answers: Map<number, AchievementRecord | Error>;
+/** A null answer is Steam's "Profile is not public". */
+let answers: Map<number, AchievementRecord | Error | null>;
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -170,11 +173,13 @@ beforeEach(() => {
   readAchievementRecords.mockImplementation(async (_id: string, appids: number[]) =>
     new Map(appids.map(appid => [appid, fresh.has(appid) ? okRecord() : null])));
   fetchAchievementRecord.mockImplementation(async (_id: string, appid: number) => {
-    const answer = answers.get(appid) ?? okRecord();
+    const answer = answers.has(appid) ? answers.get(appid) : okRecord();
     if (answer instanceof Error) throw answer;
     return answer;
   });
   saveAchievementRecords.mockResolvedValue(undefined);
+  isAchievementsPrivate.mockResolvedValue(false);
+  markAchievementsPrivate.mockResolvedValue(undefined);
 });
 
 const scan = (cursor?: string | null, extra: Parameters<typeof scanAchievements>[1] = {}) =>
@@ -208,17 +213,28 @@ describe('scanAchievements', () => {
     expect(await scan((await scan(first.cursor)).cursor)).toMatchObject({ state: 'complete' });
     expect(fetchAchievementRecord).not.toHaveBeenCalled();
   });
-  it('honors a smaller limit', async () => {
+  it('stops after one probe when achievements are private and records it once for the user', async () => {
     library(20);
-    expect(await scan(null, { limit: 3 })).toMatchObject({ progress: { done: 3 } });
-    expect(fetchAchievementRecord).toHaveBeenCalledTimes(3);
-  });
-  it('stops after one probe when achievements are private', async () => {
-    library(20);
-    answers.set(10, negative('private'));
-    expect(await scan()).toEqual({ state: 'private', cursor: null, progress: { done: 1, total: 20 }, fetched: { ok: 0, noStats: 0, private: 1, failed: 0 } });
+    answers.set(10, null);
+    expect(await scan()).toEqual({ state: 'private', cursor: null, progress: { done: 0, total: 20 }, fetched: { ok: 0, noStats: 0, private: 1, failed: 0 } });
     expect(fetchAchievementRecord).toHaveBeenCalledTimes(1);
-    expect([...(saveAchievementRecords.mock.calls[0][1] as Map<number, AchievementRecord>).keys()]).toEqual([10]);
+    expect((saveAchievementRecords.mock.calls[0][1] as Map<number, AchievementRecord>).size).toBe(0);
+    expect(markAchievementsPrivate).toHaveBeenCalledWith(steamId, NOW);
+  });
+  it('calls Steam for no game while the private marker is fresh', async () => {
+    library(20);
+    isAchievementsPrivate.mockResolvedValue(true);
+    expect(await scan()).toEqual({ state: 'private', cursor: null, progress: { done: 0, total: 20 }, fetched: { ok: 0, noStats: 0, private: 0, failed: 0 } });
+    expect(isAchievementsPrivate).toHaveBeenCalledWith(steamId, NOW);
+    expect(readAchievementRecords).not.toHaveBeenCalled();
+    expect(fetchAchievementRecord).not.toHaveBeenCalled();
+    expect(saveAchievementRecords).not.toHaveBeenCalled();
+  });
+  it('asks for a library sync before the index is built', async () => {
+    readLibIndex.mockResolvedValue({ entries: new Map(), built: false, updatedAt: null });
+    expect(await scan()).toEqual({ state: 'needs_sync', cursor: null, progress: { done: 0, total: 0 }, fetched: { ok: 0, noStats: 0, private: 0, failed: 0 } });
+    expect(readAchievementRecords).not.toHaveBeenCalled();
+    expect(fetchAchievementRecord).not.toHaveBeenCalled();
   });
   it('re-syncs the index summary of fresh records only when it differs', async () => {
     library(3, { 20: { ap: 50, au: 1, at: 2 } });
@@ -230,7 +246,7 @@ describe('scanAchievements', () => {
   });
   it('stores no-stats answers and moves on', async () => {
     library(3);
-    answers.set(20, negative('no_stats'));
+    answers.set(20, noStatsRecord());
     expect(await scan()).toMatchObject({ state: 'complete', fetched: { ok: 2, noStats: 1 } });
   });
   it('pauses on throttling with a resumable cursor and a retry time', async () => {
@@ -288,14 +304,14 @@ describe('POST /api/achievements/scan', () => {
     expect(readLibIndex).not.toHaveBeenCalled();
   });
   it('validates the body', async () => {
-    for (const body of ['nope', [], { cursor: 5 }, { limit: 0 }, { limit: SCAN_BATCH_SIZE + 1 }, { limit: 1.5 }, { cursor: 'bad' }]) {
+    for (const body of ['nope', [], { cursor: 5 }, { cursor: 'bad' }]) {
       const response = await post(body);
       expect(response.status).toBe(400);
       expect((await response.json()).error.code).toBe('invalid');
     }
   });
   it('runs one batch and returns the scan state without caching', async () => {
-    const response = await post({ cursor: null, limit: 5 });
+    const response = await post({ cursor: null });
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(await response.json()).toEqual({
@@ -303,10 +319,16 @@ describe('POST /api/achievements/scan', () => {
     });
   });
   it('explains a private profile', async () => {
-    answers.set(10, negative('private'));
+    answers.set(10, null);
     const body = await (await post({})).json();
     expect(body.state).toBe('private');
     expect(body.message).toContain('Game details to Public');
+  });
+  it('asks for a library sync before the index is built', async () => {
+    readLibIndex.mockResolvedValue({ entries: new Map(), built: false, updatedAt: null });
+    const body = await (await post({})).json();
+    expect(body).toMatchObject({ state: 'needs_sync', cursor: null });
+    expect(body.message).toContain('Sync your library');
   });
   it('returns the error envelope when storage fails', async () => {
     readLibIndex.mockRejectedValueOnce(new Error('down'));

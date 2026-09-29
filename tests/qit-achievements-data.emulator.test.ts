@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../src/lib/firestore';
 import { getCachedAchievementProgress as legacyEntryPoint } from '../src/lib/achievement-cache';
 import {
-  ACHIEVEMENT_TTL_MS, getCachedAchievementProgress, readAchievementRecord, readAchievementRecords, scanAchievements,
+  ACHIEVEMENT_TTL_MS, PRIVATE_RECHECK_MS, getCachedAchievementProgress, readAchievementRecord, readAchievementRecords, scanAchievements,
 } from '../src/lib/achievements';
 import { createSteamClient } from '../src/lib/steam/client';
 import { patchLibIndex, readLibIndex } from '../src/lib/store/lib-index';
@@ -78,19 +78,26 @@ describe.skipIf(!emulated)('getCachedAchievementProgress (emulator)', () => {
     expect(record!.expiresAtMs - Date.parse(record!.fetchedAt)).toBe(ACHIEVEMENT_TTL_MS.noStats);
   });
 
-  it('clears the index summary when achievements turn private, and does not create index entries', async () => {
+  it('records private achievements once per user, asks Steam again after the recheck time, and does not create index entries', async () => {
     const steamId = freshUser();
     await patchLibIndex(steamId, { 620: { n: 'Portal 2', ap: 50, au: 1, at: 2 } }, { create: true });
-    vi.stubGlobal('fetch', fakeSteam({ 620: privateStats, 730: ok(1, 1) }).fetchMock);
+    const steam = fakeSteam({ 620: privateStats, 730: ok(1, 1) });
+    vi.stubGlobal('fetch', steam.fetchMock);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
 
     expect(await getCachedAchievementProgress(steamId, 620)).toBeNull();
+    expect(await getCachedAchievementProgress(steamId, 730)).toBeNull();
+    expect(steam.calls.map(call => call.appid)).toEqual([620]);
+    expect(await readAchievementRecord(steamId, 620)).toBeNull();
+    expect((await readLibIndex(steamId)).entries.get(620)).toEqual({ n: 'Portal 2', ap: 50, au: 1, at: 2 });
+
+    vi.setSystemTime(NOW + PRIVATE_RECHECK_MS + 1);
     expect(await getCachedAchievementProgress(steamId, 730)).toEqual({ unlocked: 1, total: 1, percent: 100 });
-    const { entries } = await readLibIndex(steamId);
-    expect(entries.get(620)).toEqual({ n: 'Portal 2' });
-    expect(entries.has(730)).toBe(false);
+    expect(steam.calls.map(call => call.appid)).toEqual([620, 730]);
+    expect((await readLibIndex(steamId)).entries.has(730)).toBe(false);
     const complete = await readAchievementRecord(steamId, 730);
     expect(complete!.expiresAtMs - Date.parse(complete!.fetchedAt)).toBe(ACHIEVEMENT_TTL_MS.complete);
-    expect((await readAchievementRecord(steamId, 620))?.state).toBe('private');
   });
 });
 
@@ -134,37 +141,39 @@ describe.skipIf(!emulated)('scanAchievements (emulator)', () => {
     expect(steam.calls).toHaveLength(38);
   });
 
-  it('falls back to per-game documents before the index is built, and stops at once on private achievements', async () => {
+  it('stops at once on private achievements and calls Steam for no game until the recheck time', async () => {
     const steamId = freshUser();
-    const batch = db.batch();
-    for (const [appid, playtime] of [[100, 10], [200, 500], [300, 50]]) {
-      batch.set(db.doc(paths.userGame(steamId, appid)), { appid, name: `Game ${appid}`, img_icon_url: '', playtime_forever: playtime });
-    }
-    await batch.commit();
+    await patchLibIndex(steamId, { 100: { n: 'A', p: 10 }, 200: { n: 'B', p: 500 }, 300: { n: 'C', p: 50 } }, { create: true });
     const steam = fakeSteam({}, privateStats);
+    const run = (now: number) => scanAchievements(steamId, { client: steam.client, now: () => now });
+    const stopped = { state: 'private', cursor: null, progress: { done: 0, total: 3 } };
 
-    expect(await scanAchievements(steamId, { client: steam.client, now: () => NOW })).toEqual({
-      state: 'private', cursor: null, progress: { done: 1, total: 3 }, fetched: { ok: 0, noStats: 0, private: 1, failed: 0 },
-    });
+    expect(await run(NOW)).toEqual({ ...stopped, fetched: { ok: 0, noStats: 0, private: 1, failed: 0 } });
+    expect(await run(NOW + 1000)).toEqual({ ...stopped, fetched: { ok: 0, noStats: 0, private: 0, failed: 0 } });
     expect(steam.calls.map(call => call.appid)).toEqual([200]);
-    expect((await readAchievementRecord(steamId, 200))?.state).toBe('private');
-    expect((await readLibIndex(steamId)).built).toBe(false);
+    expect([...(await readAchievementRecords(steamId, [100, 200, 300])).values()]).toEqual([null, null, null]);
+
+    const publicSteam = fakeSteam({});
+    expect(await scanAchievements(steamId, { client: publicSteam.client, now: () => NOW + PRIVATE_RECHECK_MS + 1 }))
+      .toMatchObject({ state: 'complete', fetched: { ok: 3, private: 0 } });
   });
 
   it('fills in the index summary of records stored before the index was built, without calling Steam', async () => {
     const steamId = freshUser();
-    await db.doc(paths.userGame(steamId, 620)).set({ appid: 620, name: 'Portal 2', img_icon_url: '', playtime_forever: 90 });
     const steam = fakeSteam({ 620: ok(1, 4) });
-    expect(await scanAchievements(steamId, { client: steam.client, now: () => NOW })).toMatchObject({ state: 'complete', fetched: { ok: 1 } });
+    vi.stubGlobal('fetch', steam.fetchMock);
+    expect(await getCachedAchievementProgress(steamId, 620)).toEqual({ unlocked: 1, total: 4, percent: 25 });
     await patchLibIndex(steamId, { 620: { n: 'Portal 2', p: 90 } }, { create: true });
-    expect(await scanAchievements(steamId, { client: steam.client, now: () => NOW + 1000 })).toMatchObject({ state: 'complete', fetched: { ok: 0 } });
+    expect(await scanAchievements(steamId, { client: steam.client })).toMatchObject({ state: 'complete', fetched: { ok: 0 } });
     expect(steam.calls).toHaveLength(1);
     expect((await readLibIndex(steamId)).entries.get(620)).toEqual({ n: 'Portal 2', p: 90, ap: 25, au: 1, at: 4 });
   });
 
-  it('reports an empty library as complete', async () => {
-    expect(await scanAchievements(freshUser(), { now: () => NOW })).toEqual({
-      state: 'complete', cursor: null, progress: { done: 0, total: 0 }, fetched: { ok: 0, noStats: 0, private: 0, failed: 0 },
+  it('asks for a library sync before the index is built', async () => {
+    const steam = fakeSteam({});
+    expect(await scanAchievements(freshUser(), { client: steam.client, now: () => NOW })).toEqual({
+      state: 'needs_sync', cursor: null, progress: { done: 0, total: 0 }, fetched: { ok: 0, noStats: 0, private: 0, failed: 0 },
     });
+    expect(steam.calls).toHaveLength(0);
   });
 });

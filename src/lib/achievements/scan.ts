@@ -1,18 +1,16 @@
-import { db } from '../firestore';
 import { logServerError } from '../steam';
 import { createSemaphore, SteamClientError, type SteamClient } from '../steam/client';
 import { readLibIndex } from '../store/lib-index';
-import { paths } from '../store/paths';
 import {
   decodeScanCursor, encodeScanCursor, indexMatches, isFresh, planScan, positionAfter,
-  type AchievementRecord, type ScanCandidate, type ScanIndexEntry, type ScanKey,
+  type AchievementRecord, type ScanCandidate, type ScanKey,
 } from './model';
-import { fetchAchievementRecord, readAchievementRecords, saveAchievementRecords } from './store';
+import { fetchAchievementRecord, isAchievementsPrivate, markAchievementsPrivate, readAchievementRecords, saveAchievementRecords } from './store';
 
 // Incremental achievement scan (decision D13: on demand the first time an achievement mode is used, then refreshed
 // by TTL). The client calls it in a loop, passing back the cursor, and shows `progress`. Each call reads the library
-// (four index reads), walks forward from the cursor reading the stored records, and fetches at most `limit` games
-// whose records are missing or expired, five at a time. Fresh games cost one read and no Steam call, so re-running a
+// (four index reads), walks forward from the cursor reading the stored records, and fetches at most SCAN_BATCH_SIZE
+// games whose records are missing or expired, five at a time. Fresh games cost one read and no Steam call, so re-running a
 // finished scan only refreshes what expired.
 
 export const SCAN_BATCH_SIZE = 15;
@@ -30,8 +28,10 @@ export type ScanState =
   | 'running'
   /** The pass is finished; `cursor` is null. */
   | 'complete'
-  /** Steam answered "Profile is not public" for achievements; the pass stops and `cursor` is null. */
+  /** Steam answered "Profile is not public" for achievements, now or within PRIVATE_RECHECK_MS; `cursor` is null. */
   | 'private'
+  /** The user's library index is not built yet: sync the library, then scan again. `cursor` is null. */
+  | 'needs_sync'
   /** Steam throttled us or the daily key budget ran out: call again with `cursor` after `retryAfter` seconds. */
   | 'rate_limited';
 
@@ -48,31 +48,10 @@ export interface ScanResult {
 
 export interface ScanOptions {
   cursor?: string | null;
-  limit?: number;
   concurrency?: number;
   timeBudgetMs?: number;
   now?: () => number;
   client?: SteamClient;
-}
-
-/**
- * The games the scan covers, with the index fields it orders them by. Before the library index is built (users who
- * have not resynced since it landed) the per-game documents are read instead.
- */
-export async function loadScanLibrary(steamId: string): Promise<{ entries: Array<[number, ScanIndexEntry]>; indexed: boolean }> {
-  const index = await readLibIndex(steamId);
-  if (index.built) return { entries: [...index.entries], indexed: true };
-  const snapshot = await db.collection(paths.userGames(steamId)).select('playtime_forever', 'has_community_visible_stats').get();
-  const entries = snapshot.docs.flatMap(doc => {
-    const appid = Number(doc.id);
-    if (!Number.isSafeInteger(appid) || appid <= 0) return [];
-    const data = doc.data();
-    const entry: ScanIndexEntry = {};
-    if (typeof data.playtime_forever === 'number') entry.p = data.playtime_forever;
-    if (typeof data.has_community_visible_stats === 'boolean') entry.s = data.has_community_visible_stats ? 1 : 0;
-    return [[appid, entry] as [number, ScanIndexEntry]];
-  });
-  return { entries, indexed: false };
 }
 
 export class InvalidScanCursorError extends Error {
@@ -81,25 +60,26 @@ export class InvalidScanCursorError extends Error {
 
 export async function scanAchievements(steamId: string, options: ScanOptions = {}): Promise<ScanResult> {
   const clock = options.now ?? Date.now;
-  const limit = Math.max(1, Math.min(SCAN_BATCH_SIZE, options.limit ?? SCAN_BATCH_SIZE));
   let cursorKey: ScanKey | null = null;
   if (options.cursor) {
     cursorKey = decodeScanCursor(options.cursor);
     if (!cursorKey) throw new InvalidScanCursorError();
   }
-  const library = await loadScanLibrary(steamId);
-  const indexEntries = new Map(library.entries);
-  const candidates = planScan(library.entries);
-  const start = positionAfter(candidates, cursorKey);
   const now = clock();
+  const noneFetched = { ok: 0, noStats: 0, private: 0, failed: 0 };
+  const [index, isPrivate] = await Promise.all([readLibIndex(steamId), isAchievementsPrivate(steamId, now)]);
+  if (!index.built) return { state: 'needs_sync', cursor: null, progress: { done: 0, total: 0 }, fetched: noneFetched };
+  const candidates = planScan(index.entries);
+  const start = positionAfter(candidates, cursorKey);
+  if (isPrivate) return { state: 'private', cursor: null, progress: { done: start, total: candidates.length }, fetched: noneFetched };
 
-  // Walk forward from the cursor until `limit` games are due or the read allowance is spent.
+  // Walk forward from the cursor until SCAN_BATCH_SIZE games are due or the read allowance is spent.
   const examined: ScanCandidate[] = [];
   const due: ScanCandidate[] = [];
   // Fresh records whose index summary is missing or stale, for example written before the index was built.
   const resync = new Map<number, AchievementRecord>();
   let next = start;
-  while (due.length < limit && next < candidates.length && examined.length < SCAN_EXAMINE_LIMIT) {
+  while (due.length < SCAN_BATCH_SIZE && next < candidates.length && examined.length < SCAN_EXAMINE_LIMIT) {
     const group = candidates.slice(next, Math.min(candidates.length, next + READ_GROUP, start + SCAN_EXAMINE_LIMIT));
     const stored = await readAchievementRecords(steamId, group.map(candidate => candidate.appid));
     for (const candidate of group) {
@@ -107,13 +87,14 @@ export async function scanAchievements(steamId: string, options: ScanOptions = {
       next++;
       const record = stored.get(candidate.appid) ?? null;
       if (!record || !isFresh(record, now)) due.push(candidate);
-      else if (library.indexed && !indexMatches(indexEntries.get(candidate.appid) ?? {}, record)) resync.set(candidate.appid, record);
-      if (due.length >= limit) break;
+      else if (!indexMatches(index.entries.get(candidate.appid) ?? {}, record)) resync.set(candidate.appid, record);
+      if (due.length >= SCAN_BATCH_SIZE) break;
     }
   }
 
   const records = new Map<number, AchievementRecord>();
   const failed = new Set<number>();
+  let privateAnswers = 0;
   type Stop = { state: 'private' } | { state: 'rate_limited'; retryAfter: number };
   // Set from inside the fetch callbacks; the cast keeps TypeScript from narrowing it to null for good.
   let stop = null as Stop | null;
@@ -122,8 +103,12 @@ export async function scanAchievements(steamId: string, options: ScanOptions = {
     if (stop || (!force && clock() >= deadline)) return;
     try {
       const record = await fetchAchievementRecord(steamId, candidate.appid, clock(), options.client);
-      records.set(candidate.appid, record);
-      if (record.state === 'private') stop ??= { state: 'private' };
+      if (record) {
+        records.set(candidate.appid, record);
+        return;
+      }
+      privateAnswers++;
+      stop ??= { state: 'private' };
     } catch (error) {
       if (error instanceof SteamClientError && (error.kind === 'rate_limited' || error.kind === 'budget_exhausted')) {
         stop ??= { state: 'rate_limited', retryAfter: error.retryAfterSeconds
@@ -140,6 +125,7 @@ export async function scanAchievements(steamId: string, options: ScanOptions = {
   await Promise.all(due.slice(1).map(candidate => semaphore.run(() => fetchOne(candidate))));
 
   await saveAchievementRecords(steamId, records, resync);
+  if (stop?.state === 'private') await markAchievementsPrivate(steamId, clock());
 
   // The cursor moves past the longest run of examined games that are settled (fresh, stored or failed), so games
   // skipped by a stop or the time budget come first on the next call.
@@ -151,11 +137,10 @@ export async function scanAchievements(steamId: string, options: ScanOptions = {
     settled++;
   }
   const done = start + settled;
-  const fetched = { ok: 0, noStats: 0, private: 0, failed: failed.size };
+  const fetched = { ok: 0, noStats: 0, private: privateAnswers, failed: failed.size };
   for (const record of records.values()) {
     if (record.state === 'ok') fetched.ok++;
-    else if (record.state === 'no_stats') fetched.noStats++;
-    else fetched.private++;
+    else fetched.noStats++;
   }
   const progress = { done, total: candidates.length };
   const cursorAt = (position: number) => position > 0 ? encodeScanCursor(candidates[position - 1]) : null;

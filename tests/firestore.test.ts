@@ -76,7 +76,9 @@ it('caches Steam no-stats and private achievement responses but not other failur
   body = { playerstats: { success: false, error: 'Profile is not public' } };
   expect(await getCachedAchievementProgress(steamId, 200002)).toBeNull();
   expect(await getCachedAchievementProgress(steamId, 200002)).toBeNull();
+  expect(await getCachedAchievementProgress(steamId, 200006)).toBeNull();
   expect(steamCalls).toBe(2);
+  await db.doc(`users/${steamId}/meta/achievements`).delete();
 
   for (const [appid, nextStatus] of [[200003, 500], [200004, 403]]) {
     status = nextStatus;
