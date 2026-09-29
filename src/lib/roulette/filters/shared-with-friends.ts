@@ -8,7 +8,7 @@ const MAX_FRIENDS = 16;
 export interface SharedWithFriendsParams {
   /**
    * Friends that must own the game. Omitted means the friends the scope names (`friends` and `pair`
-   * scopes), or every player in the group signals when the scope names none.
+   * scopes), or every scope player (`FilterContext.members`, else the group signals) when it names none.
    */
   with?: string[];
   /** `all` (the default) needs every selected friend to own it; `any` needs at least one. */
@@ -46,7 +46,7 @@ const sharedWithFriends: Filter<SharedWithFriendsParams> = {
     const group = candidate.signals.group;
     if (!group) return 'unknown';
     const members = new Map(group.members.map(member => [member.steamId, member]));
-    const selected = friendsOf(params, ctx.scope) ?? [...members.keys()];
+    const selected = friendsOf(params, ctx.scope) ?? ctx.members ?? [...members.keys()];
     if (selected.length === 0) return 'unknown';
     // A friend missing from the group had no readable library (private, not found or errored).
     const owns = selected.map(id => members.get(id)?.owns);

@@ -57,7 +57,7 @@ The bands come from `qit-player-counts`; the filter only reads `live.band`. A ga
 
 ### Shared with friends
 
-The friends checked are `params.with` if given, otherwise the friends the scope names (`friends` scope, or the `pair` friend), otherwise every player in `signals.group`. A friend who is missing from `group.members` had no readable library, so they make the verdict unknown unless another friend already decides it. The requester always owns their own pool, so they never change a result.
+The friends checked are `params.with` if given, otherwise the friends the scope names (`friends` scope, or the `pair` friend), otherwise every player in the scope: `FilterContext.members` (the readable `ScopeResult.members` plus the `unavailable` ones) when the pipeline passes it, else every player in `signals.group`. The pipeline should pass `members` so an unreadable lobby player counts. A friend who is missing from `group.members` had no readable library, so they make the verdict unknown unless another friend already decides it. The requester always owns their own pool, so they never change a result.
 
 ## Exclusion stage
 

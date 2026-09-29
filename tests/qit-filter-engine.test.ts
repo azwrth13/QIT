@@ -255,6 +255,17 @@ describe('shared-with-friends', () => {
     expect(run('shared-with-friends', group([me, true], [a, false]), {}, { kind: 'library' })).toBe('fail');
   });
 
+  it('reads an unreadable scope member as unknown when the scope names no friends', () => {
+    const lobby: Scope = { kind: 'lobby', code: 'ABCD' };
+    const filter = getFilter('shared-with-friends');
+    const members = { ...ctx(lobby), members: [me, a, b] };
+    expect(filter.test(group([me, true], [a, true]), {}, members)).toBe('unknown');
+    expect(filter.test(group([me, true], [a, false]), {}, members)).toBe('fail');
+    expect(filter.test(group([me, true], [a, true]), { match: 'any' }, members)).toBe('pass');
+    expect(filter.test(group([me, true], [a, true]), {}, { ...ctx({ kind: 'library' }), members: [me, a, b] })).toBe('unknown');
+    expect(filter.test(group([me, true], [a, true], [b, true]), {}, members)).toBe('pass');
+  });
+
   it('is unknown without group signals or any member', () => {
     expect(run('shared-with-friends', cand(1), {}, friendsScope)).toBe('unknown');
     expect(run('shared-with-friends', group(), {}, { kind: 'library' })).toBe('unknown');
