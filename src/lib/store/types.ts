@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase-admin/firestore';
+import type { FilterSelection, ModeId, Reason, Scope } from '../roulette/types';
 
 // Record shapes for the collections in `paths.ts`. New time fields are Firestore `Timestamp`s
 // (the older `games`, `achievementProgress` and `apps` docs keep their ISO strings). A missing
@@ -59,22 +60,32 @@ export interface PinnedMetaRecord {
   updatedAt: Timestamp;
 }
 
+export type RollStatus = 'rolled' | 'accepted' | 'rerolled';
+
+/** Written only by `src/lib/history/rolls.ts`. */
 export interface RollRecord {
   appid: number;
-  modeId: string;
-  filters: Record<string, unknown>;
-  scope: string;
+  /** Game name at roll time, so history still reads well after the game leaves the library. */
+  name?: string;
+  modeId: ModeId;
+  filters: FilterSelection[];
+  scope: Scope;
+  /** Everyone in the scope, requester first. */
   participants: string[];
   lobbyId?: string;
   at: Timestamp;
-  status: string;
+  status: RollStatus;
   acceptedAt?: Timestamp;
+  rerolledAt?: Timestamp;
+  /** Independent of `status`: a rerolled game can still turn out to be played. */
   playedAt?: Timestamp;
   playedSource?: 'sync' | 'manual';
-  playtimeAtRoll: number;
-  reasons: Array<{ code: string; params?: Record<string, unknown> }>;
+  /** Minutes; null when playtime was unknown (hidden) at roll time. */
+  playtimeAtRoll: number | null;
+  reasons: Reason[];
 }
 
+/** Append-only; written only by `src/lib/history/events.ts`. */
 export interface EventRecord {
   type: string;
   at: Timestamp;
@@ -85,10 +96,12 @@ export interface EventRecord {
 
 export type ExclusionScope = 'session' | 'day' | '7d' | 'forever';
 
+/** One map doc keyed by appid; written only by `src/lib/history/exclusions.ts`. */
 export interface ExclusionsRecord {
   [appid: string]: { scope: ExclusionScope; until?: Timestamp; sessionId?: string; at: Timestamp };
 }
 
+/** Written only by `src/lib/history/stats.ts`. */
 export interface StatsSummaryRecord {
   counters: Record<string, number>;
   streak?: { current: number; longest: number; lastDay?: string };
