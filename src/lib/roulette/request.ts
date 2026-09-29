@@ -2,7 +2,8 @@ import { isSteamId } from '../steam';
 import { MAX_WITH_IDS } from '../links/with-param';
 import { parseFilterSelections, type ParsedFilter } from './filter-engine';
 import { getMode, isModeId } from './modes';
-import { SCOPE_KINDS, type FilterSelection, type Mode, type Scope, type ScopeKind } from './types';
+import { unsourcedSelection } from './pipeline';
+import { SCOPE_KINDS, type FilterSelection, type Mode, type Scope, type ScopeKind, type SignalFamily } from './types';
 
 // Validates the JSON body of `POST /api/roulette/spin` and `POST /api/roulette/pool`. Pure. Request bodies are
 // untrusted, so anything unrecognised (an unknown key, a stub mode, a malformed scope) is rejected rather than
@@ -91,9 +92,10 @@ function selectionsOf(filters: readonly ParsedFilter[]): FilterSelection[] {
 
 /**
  * Validates a spin (`kind: 'spin'`, mode required, seed allowed) or pool preview (`kind: 'pool'`, mode optional,
- * no seed) request. The mode must be implemented and must support the scope.
+ * no seed) request. The mode must be implemented and must support the scope, and the mode and every filter must
+ * read only families in `sourced` (`sourcedFamilies`).
  */
-export function parseSpinRequest(raw: unknown, kind: 'spin' | 'pool' = 'spin'): ParseSpinResult {
+export function parseSpinRequest(raw: unknown, kind: 'spin' | 'pool', sourced: ReadonlySet<SignalFamily>): ParseSpinResult {
   if (!isPlainObject(raw)) return { ok: false, error: 'request body must be an object' };
   const allowed: readonly string[] = kind === 'spin' ? SPIN_KEYS : POOL_KEYS;
   const unknownKey = Object.keys(raw).find(key => !allowed.includes(key));
@@ -108,6 +110,8 @@ export function parseSpinRequest(raw: unknown, kind: 'spin' | 'pool' = 'spin'): 
 
   const parsed = parseFilterSelections(raw.filters);
   if (!parsed.ok) return parsed;
+  const unsourced = unsourcedSelection({ mode, filters: parsed.filters }, sourced);
+  if (unsourced) return { ok: false, error: `${unsourced} is not available` };
 
   const scope = parseScope(raw.scope);
   if (!scope) return { ok: false, error: 'invalid scope' };

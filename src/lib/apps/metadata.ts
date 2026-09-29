@@ -247,6 +247,11 @@ export async function getAppMeta(appids: readonly number[], options: AppMetaOpti
   return { meta, unresolved: [...unresolved], fetched };
 }
 
+export interface EnrichOptions extends AppMetaOptions {
+  /** Only consider these library apps, in this order (every index entry when omitted); bounds the `appMeta` reads. */
+  appids?: readonly number[];
+}
+
 export interface EnrichResult {
   /** Library apps whose flags were not known yet. */
   requested: number;
@@ -265,10 +270,11 @@ export interface EnrichResult {
  * index, so it can never resurrect a game the library sync removed. Safe to call repeatedly; use `maxFetch` to bound
  * the Steam calls per request and repeat until `unresolved` is 0.
  */
-export async function enrichLibraryFlags(steamId: string, options: AppMetaOptions = {}): Promise<EnrichResult> {
+export async function enrichLibraryFlags(steamId: string, options: EnrichOptions = {}): Promise<EnrichResult> {
   const index = await readLibIndex(steamId);
   const total = index.entries.size;
-  const needed = [...index.entries].filter(([, entry]) => options.force || !isKnown(entry.f)).map(([appid]) => appid);
+  const candidates = options.appids ?? [...index.entries.keys()];
+  const needed = candidates.filter(appid => index.entries.has(appid) && (options.force || !isKnown(index.entries.get(appid)!.f)));
   const { meta, unresolved, fetched } = await getAppMeta(needed, options);
   const patches = new Map<number, { f: number }>();
   for (const [appid, app] of meta) {

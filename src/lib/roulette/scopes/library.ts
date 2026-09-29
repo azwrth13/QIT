@@ -5,8 +5,8 @@ import { getLibraryGames } from '../../library';
 import { readLibIndex } from '../../store/lib-index';
 import { paths } from '../../store/paths';
 import type { LibIndexEntry, UserRecord } from '../../store/types';
-import type { SpinScopeResult } from '../pipeline';
-import type { Candidate, ScopeResolver, Signals, StoreSignals } from '../types';
+import type { SpinScopeResolver, SpinScopeResult } from '../pipeline';
+import type { Candidate, Signals, StoreSignals } from '../types';
 
 // The `library` scope: the requester's own games, read from the library index (four reads plus the user document).
 // Besides the library signals, the index already holds the store flag bits (`f`, app-metadata) and the achievement
@@ -69,8 +69,9 @@ export function candidateFromGame(game: Game): Candidate {
   };
 }
 
-export const libraryScope: ScopeResolver<'library'> = {
+export const libraryScope: SpinScopeResolver<'library'> = {
   kind: 'library',
+  provides: ['store', 'achievements'],
   async resolve(_scope, { steamId }): Promise<SpinScopeResult> {
     const [user, index] = await Promise.all([db.doc(paths.user(steamId)).get(), readLibIndex(steamId)]);
     const flags = (user.data() as Partial<UserRecord> | undefined)?.flags;

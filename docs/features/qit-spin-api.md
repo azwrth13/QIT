@@ -30,7 +30,7 @@ An empty pool, or a mode that finds nothing eligible, returns `card: null` and r
 | Family | Source |
 |---|---|
 | `library` | the scope resolver |
-| `store` | the index flag bits. For games with no bits yet, a spin runs app-metadata's `enrichLibraryFlags` with `maxFetch` 1000 (at most 10 keyless GetItems calls), which patches `f` into the index, and then reads the bits back. Scopes outside the library use the `appMeta` cache (`getAppMeta`, at most 1000 reads). A failure never fails the spin: those games stay unknown |
+| `store` | the index flag bits. For games with no bits yet, a spin takes at most 1000 of them, most played first (then most recently played), and runs app-metadata's `enrichLibraryFlags` on just those with `maxFetch` 500. That is at most 1000 `appMeta` reads and at most 5 keyless GetItems calls, which run at once (concurrency 5). It patches `f` into the index and then reads the bits back. Scopes outside the library use the `appMeta` cache (`getAppMeta`) with the same bounds and order. A failure never fails the spin: those games stay unknown |
 | `history` | `readExclusions` (one read, with the request's `sessionId` so "Hide for this session" applies) and `recentlyRolled` (one range query of at most 500 rolls). The window is 30 days (D6), or longer when the `exclude-rolled` filter asks for more. `playedAfterRoll` is always false until qit-played-detection lands |
 | `achievements` | the index summary only. There is no Steam scan here: achievements-data owns scanning (D13) |
 | `live`, `group` | no loader yet. qit-player-counts and the group scopes add theirs to `SIGNAL_LOADERS` |
@@ -54,7 +54,7 @@ Every route needs a session and answers with `Cache-Control: private, no-store` 
   "exclude": [620], "showNonGames": false, "sessionId": "picker-1", "seed": "optional" }
 ```
 
-Only `mode` is required. The scope defaults to the library. Unknown fields, stub modes, stub or invalid filters, a mode that does not support the scope, more than 500 `exclude` appids, and malformed scopes are rejected with 400. A scope kind with no resolver yet (`friends`, `pair`, `lobby`, `appids`) also gets a 400 ("not available yet").
+Only `mode` is required. The scope defaults to the library. Unknown fields, stub modes, stub or invalid filters, a mode or filter that reads a signal family with no source yet (see below), a mode that does not support the scope, more than 500 `exclude` appids, and malformed scopes are rejected with 400. A scope kind with no resolver yet (`friends`, `pair`, `lobby`, `appids`) also gets a 400 ("not available yet").
 
 Response: `{ card, poolSize, coverage, seed, eligible, preview, playtimeHidden }`. `preview` is the filter engine's `PoolPreview`: the total, removals by cause, one step per filter, and the final count.
 
@@ -64,12 +64,12 @@ This takes the same body without `seed`, and `mode` is optional. The response is
 
 ### `GET /api/roulette/modes`
 
-This returns `{ modes, filters, scopes }`: the implemented modes (with the scopes they can use today), the implemented filters with the families they require, and the scope kinds that have a resolver. Stubs are never listed. Today that is Pure Random, all eleven filters, and the `library` scope.
+This returns `{ modes, filters, scopes }`: the implemented modes (with the scopes they can use today), the implemented filters with the families they require, and the scope kinds that have a resolver. Stubs are never listed. Neither is a mode or filter that reads a signal family with no source yet. A family has a source when it is `library`, has a loader in `SIGNAL_LOADERS`, or is attached by a scope resolver (`provides`; the library resolver attaches `store` and `achievements`). The spin and pool routes reject such a mode or filter with a 400, and the pipeline rejects one the requested scope cannot source. Today the catalog lists Pure Random, nine of the eleven filters, and the `library` scope. `player-activity` (needs `live`) and `shared-with-friends` (needs `group`) appear once qit-player-counts and the group scopes add their sources.
 
 ## Extending
 
 - **Modes.** A mode package replaces its stub file under `modes/`. The spin API picks the mode up through the registry with no change here, and `/modes` lists it once `stub` is false.
-- **Scopes.** Add a `ScopeResolver` under `scopes/` and one line in `SCOPE_RESOLVERS`. The resolver can return `playtimeHidden` (`SpinScopeResult`). Put the readable players in `members` (requester first) and the unreadable ones in `unavailable`. The pipeline passes both to the filters.
+- **Scopes.** Add a `SpinScopeResolver` under `scopes/` and one line in `SCOPE_RESOLVERS`. List the families it attaches besides `library` in `provides`. The resolver can return `playtimeHidden` (`SpinScopeResult`). Put the readable players in `members` (requester first) and the unreadable ones in `unavailable`. The pipeline passes both to the filters.
 - **Signals.** Add a `SignalLoader` for the family in `SIGNAL_LOADERS`. A loader fills the candidates in place, leaves the ones it cannot resolve unloaded, and should throw only when the request must fail.
 
 Known limits: `previousSelections` and the anti-repeat filter see at most the 500 newest rolls in the window. The non-game bit written by app-metadata also covers demos, so indexed demos are hidden with the other non-games.

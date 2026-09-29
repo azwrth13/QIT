@@ -6,7 +6,7 @@ import { addExclusion } from '../src/lib/history/exclusions';
 import { getRoll, listRolls, recordRoll } from '../src/lib/history/rolls';
 import { readStats } from '../src/lib/history/stats';
 import { parseSpinRequest, type ParsedSpinRequest } from '../src/lib/roulette/request';
-import { previewPool, spin } from '../src/lib/roulette/service';
+import { previewPool, SOURCED_FAMILIES, spin } from '../src/lib/roulette/service';
 import type { StoreItem } from '../src/lib/steam/store';
 import { patchLibIndex, readLibIndex } from '../src/lib/store/lib-index';
 import { paths } from '../src/lib/store/paths';
@@ -26,7 +26,7 @@ const base = 5_000_000 + (Date.now() % 1_000_000) * 10;
 const KNOWN = STORE_FLAG_BITS.known;
 
 const parse = (raw: unknown, kind: 'spin' | 'pool' = 'spin'): ParsedSpinRequest => {
-  const result = parseSpinRequest(raw, kind);
+  const result = parseSpinRequest(raw, kind, SOURCED_FAMILIES);
   if (!result.ok) throw new Error(result.error);
   return result.request;
 };

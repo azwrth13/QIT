@@ -4,7 +4,7 @@ import { logServerError } from '../steam';
 import { SIGNAL_LOADERS } from './enrich';
 import { listFilters } from './filters';
 import { listModes } from './modes';
-import { runPoolPreview, runSpin, type PipelineDeps, type PoolResult, type SpinResult } from './pipeline';
+import { isSourced, runPoolPreview, runSpin, sourcedFamilies, type PipelineDeps, type PoolResult, type SpinResult } from './pipeline';
 import type { ParsedSpinRequest } from './request';
 import { randomSeed } from './sampler';
 import { SCOPE_RESOLVERS } from './scopes';
@@ -30,6 +30,9 @@ export const DEFAULT_DEPS: PipelineDeps = {
   logError: logServerError,
 };
 
+/** Families with a source in some scope today; requests reading any other family are rejected (`parseSpinRequest`). */
+export const SOURCED_FAMILIES: ReadonlySet<SignalFamily> = sourcedFamilies(DEFAULT_DEPS);
+
 export function spin(steamId: string, request: ParsedSpinRequest, deps: PipelineDeps = DEFAULT_DEPS): Promise<SpinResult> {
   return runSpin(steamId, request, deps);
 }
@@ -45,14 +48,20 @@ export interface ModesCatalog {
   scopes: ScopeKind[];
 }
 
-/** What the picker may offer: implemented modes and filters only (stubs are never listed). */
-export function modesCatalog(deps: Pick<PipelineDeps, 'resolvers'> = DEFAULT_DEPS): ModesCatalog {
+/**
+ * What the picker may offer: implemented modes and filters whose signal families all have a source (stubs are never
+ * listed). A mode lists only the scopes that can source what it reads.
+ */
+export function modesCatalog(deps: Pick<PipelineDeps, 'resolvers' | 'loaders'> = DEFAULT_DEPS): ModesCatalog {
   const scopes = (Object.keys(deps.resolvers) as ScopeKind[]).filter(kind => deps.resolvers[kind]);
+  const sourced = sourcedFamilies(deps);
   return {
     modes: listModes().filter(mode => !mode.stub).map(({ id, label, description, requires, scopes: modeScopes }) => ({
-      id, label, description, requires: [...requires], scopes: modeScopes.filter(kind => scopes.includes(kind)),
+      id, label, description, requires: [...requires],
+      scopes: modeScopes.filter(kind => scopes.includes(kind) && isSourced(requires, sourcedFamilies(deps, kind))),
     })).filter(mode => mode.scopes.length),
-    filters: listFilters().filter(filter => !filter.stub).map(({ id, label, description, requires }) => ({ id, label, description, requires: [...requires] })),
+    filters: listFilters().filter(filter => !filter.stub && isSourced(filter.requires, sourced))
+      .map(({ id, label, description, requires }) => ({ id, label, description, requires: [...requires] })),
     scopes,
   };
 }

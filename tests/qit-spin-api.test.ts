@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORE_FLAG_BITS } from '../src/lib/apps/metadata';
 import { buildCard } from '../src/lib/roulette/card';
-import { runPoolPreview, runSpin, SpinInputError, coverageOf, type PipelineDeps, type SignalLoader, type SpinScopeResult } from '../src/lib/roulette/pipeline';
+import { runPoolPreview, runSpin, SpinInputError, coverageOf, sourcedFamilies, type PipelineDeps, type SignalLoader, type SpinScopeResult } from '../src/lib/roulette/pipeline';
 import { MAX_EXCLUDE, parseScope, parseSpinRequest, type ParsedSpinRequest } from '../src/lib/roulette/request';
 import { candidateFromGame, candidateFromIndexEntry, INDEXED_NON_GAME_TYPE, storeSignalsFromBits } from '../src/lib/roulette/scopes/library';
 import { THRESHOLDS } from '../src/lib/roulette/thresholds';
-import type { Candidate, Mode, ScopeResolver } from '../src/lib/roulette/types';
+import type { Candidate, Mode, ScopeResolver, SignalFamily } from '../src/lib/roulette/types';
 
 const { getSteamId, spin, previewPool, enrichLibraryFlags, getAppMeta, readLibIndex, readExclusions, recentlyRolled } = vi.hoisted(() => ({
   getSteamId: vi.fn(), spin: vi.fn(), previewPool: vi.fn(),
@@ -31,8 +31,8 @@ vi.mock('../src/lib/history/rolls', async importOriginal => ({
 import { POST as spinRoute } from '../src/app/api/roulette/spin/route';
 import { POST as poolRoute } from '../src/app/api/roulette/pool/route';
 import { GET as modesRoute } from '../src/app/api/roulette/modes/route';
-import { historyWindowDays, SIGNAL_LOADERS, STORE_ENRICH_MAX_APPS } from '../src/lib/roulette/enrich';
-import { modesCatalog } from '../src/lib/roulette/service';
+import { historyWindowDays, SIGNAL_LOADERS, STORE_ENRICH_MAX_APPS, STORE_ENRICH_MAX_READS } from '../src/lib/roulette/enrich';
+import { modesCatalog, SOURCED_FAMILIES } from '../src/lib/roulette/service';
 import { parseFilterSelections } from '../src/lib/roulette/filter-engine';
 
 const steamId = '76561198000000042';
@@ -41,8 +41,8 @@ const NOW_S = NOW / 1000;
 const DAY_S = 86_400;
 const KNOWN = STORE_FLAG_BITS.known;
 
-const parse = (raw: unknown, kind: 'spin' | 'pool' = 'spin'): ParsedSpinRequest => {
-  const result = parseSpinRequest(raw, kind);
+const parse = (raw: unknown, kind: 'spin' | 'pool' = 'spin', sourced: ReadonlySet<SignalFamily> = SOURCED_FAMILIES): ParsedSpinRequest => {
+  const result = parseSpinRequest(raw, kind, sourced);
   if (!result.ok) throw new Error(result.error);
   return result.request;
 };
@@ -78,13 +78,21 @@ describe('parseSpinRequest', () => {
       { mode: 'pure-random', showNonGames: 'yes' }, { mode: 'pure-random', sessionId: 'a/b' }, { mode: 'pure-random', seed: '' },
       { mode: 'pure-random', seed: 'x'.repeat(129) },
     ];
-    for (const raw of bad) expect(parseSpinRequest(raw).ok, JSON.stringify(raw)).toBe(false);
+    for (const raw of bad) expect(parseSpinRequest(raw, 'spin', SOURCED_FAMILIES).ok, JSON.stringify(raw)).toBe(false);
   });
 
   it('lets a pool request omit the mode but not carry a seed', () => {
     expect(parse({}, 'pool').mode).toBeNull();
     expect(parse({ mode: 'pure-random' }, 'pool').mode?.id).toBe('pure-random');
-    expect(parseSpinRequest({ seed: 'abc' }, 'pool').ok).toBe(false);
+    expect(parseSpinRequest({ seed: 'abc' }, 'pool', SOURCED_FAMILIES).ok).toBe(false);
+  });
+
+  it('rejects filters whose signals have no source yet', () => {
+    const activity = { id: 'player-activity', params: { mode: 'active' } };
+    for (const filter of [activity, { id: 'shared-with-friends', params: {} }]) {
+      expect(parseSpinRequest({ mode: 'pure-random', filters: [filter] }, 'spin', SOURCED_FAMILIES)).toEqual({ ok: false, error: `filter ${filter.id} is not available` });
+    }
+    expect(parse({ filters: [activity] }, 'pool', new Set<SignalFamily>(['library', 'live'])).filters[0].filter.id).toBe('player-activity');
   });
 
   it('validates every scope shape', () => {
@@ -295,6 +303,16 @@ describe('runSpin', () => {
     await expect(runSpin(steamId, parse({ mode: 'pure-random', scope: { kind: 'pair', with: '76561198000000043' } }), deps))
       .rejects.toThrow('scope pair is not available yet');
   });
+
+  it('rejects a filter whose signals the scope cannot source, and accepts it once a resolver attaches them', async () => {
+    const { deps } = fixture(games);
+    const request = parse({ mode: 'pure-random', filters: [{ id: 'player-activity', params: { mode: 'active' } }] }, 'spin', new Set<SignalFamily>(['library', 'live']));
+    await expect(runSpin(steamId, request, deps)).rejects.toThrow('filter player-activity is not available for scope library');
+    await expect(runPoolPreview(steamId, request, deps)).rejects.toBeInstanceOf(SpinInputError);
+    deps.resolvers.library = { ...deps.resolvers.library!, provides: ['live'] };
+    expect(sourcedFamilies(deps, 'library').has('live')).toBe(true);
+    await expect(runPoolPreview(steamId, request, deps)).resolves.toMatchObject({ coverage: { live: 0 } });
+  });
 });
 
 describe('runPoolPreview', () => {
@@ -382,12 +400,27 @@ describe('signal loaders', () => {
     await SIGNAL_LOADERS.store!(pool, ctx({ fetch: false }));
     expect(enrichLibraryFlags).not.toHaveBeenCalled();
     await SIGNAL_LOADERS.store!(pool, ctx());
-    expect(enrichLibraryFlags).toHaveBeenCalledWith(steamId, { maxFetch: STORE_ENRICH_MAX_APPS });
+    expect(enrichLibraryFlags).toHaveBeenCalledWith(steamId, { appids: [10, 20], maxFetch: STORE_ENRICH_MAX_APPS });
+    expect(STORE_ENRICH_MAX_APPS).toBeLessThanOrEqual(500);
     expect(pool[0].signals.store?.flags.coop).toBe(true);
     expect(pool[1].signals.store).toBeUndefined();
     enrichLibraryFlags.mockClear();
     await SIGNAL_LOADERS.store!([candidate(30, KNOWN)], ctx());
     expect(enrichLibraryFlags).not.toHaveBeenCalled();
+  });
+
+  it('reads a bounded number of games per spin, most played first', async () => {
+    readLibIndex.mockResolvedValue({ entries: new Map(), built: true, updatedAt: null });
+    const pool = Array.from({ length: STORE_ENRICH_MAX_READS + 5 }, (_, i) => {
+      const game = candidate(i + 1);
+      game.signals.library.playtimeForever = i === 3 ? 10_000 : i;
+      return game;
+    });
+    await SIGNAL_LOADERS.store!(pool, ctx());
+    const { appids } = enrichLibraryFlags.mock.calls[0][1];
+    expect(appids).toHaveLength(STORE_ENRICH_MAX_READS);
+    expect(appids.slice(0, 2)).toEqual([4, STORE_ENRICH_MAX_READS + 5]);
+    expect(appids).not.toContain(1);
   });
 
   it('uses the metadata cache for other scopes and never fails the spin over store data', async () => {
@@ -483,5 +516,16 @@ describe('/api/roulette routes', () => {
     expect(body.scopes).toEqual(['library']);
     expect(body.filters.map((f: { id: string }) => f.id)).toContain('never-played');
     expect(body.filters.map((f: { id: string }) => f.id)).not.toContain('installed');
+    expect(body.filters.map((f: { id: string }) => f.id)).not.toContain('player-activity');
+    expect(body.filters.map((f: { id: string }) => f.id)).not.toContain('shared-with-friends');
+    expect(body.filters).toHaveLength(9);
+  });
+
+  it('offers a filter once its signals have a source', () => {
+    const catalog = modesCatalog({ resolvers: { library: { kind: 'library', provides: ['live'], resolve: async () => ({ candidates: [], members: [], unavailable: [] }) } }, loaders: {} });
+    const ids = catalog.filters.map(filter => filter.id);
+    expect(ids).toContain('player-activity');
+    expect(ids).not.toContain('co-op');
+    expect(ids).not.toContain('exclude-rolled');
   });
 });

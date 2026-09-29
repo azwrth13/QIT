@@ -2,7 +2,7 @@ import { getSteamId } from '@/lib/auth';
 import { checkRateLimit, checkSameOrigin, createLimiter, errorResponse, jsonResponse, readJsonBody } from '@/lib/http/guards';
 import { SpinInputError } from '@/lib/roulette/pipeline';
 import { parseSpinRequest, SPIN_MAX_BODY_BYTES } from '@/lib/roulette/request';
-import { previewPool } from '@/lib/roulette/service';
+import { previewPool, SOURCED_FAMILIES } from '@/lib/roulette/service';
 import { logServerError } from '@/lib/steam';
 
 // POST /api/roulette/pool { mode?, filters?, scope?, exclude?, showNonGames?, sessionId? }
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   if (denied) return denied;
   const body = await readJsonBody(req, SPIN_MAX_BODY_BYTES);
   if ('response' in body) return body.response;
-  const parsed = parseSpinRequest(body.body, 'pool');
+  const parsed = parseSpinRequest(body.body, 'pool', SOURCED_FAMILIES);
   if (!parsed.ok) return errorResponse('invalid', parsed.error);
   try {
     return jsonResponse(await previewPool(steamId, parsed.request));

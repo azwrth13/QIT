@@ -18,7 +18,9 @@ export interface SpinScopeResult extends ScopeResult {
   playtimeHidden?: boolean;
 }
 
-export type ScopeResolvers = { [K in ScopeKind]?: ScopeResolver<K> };
+/** A scope resolver, plus the signal families it attaches to its candidates besides `library`. */
+export type SpinScopeResolver<K extends ScopeKind = ScopeKind> = ScopeResolver<K> & { provides?: readonly SignalFamily[] };
+export type ScopeResolvers = { [K in ScopeKind]?: SpinScopeResolver<K> };
 
 export interface LoadContext {
   steamId: string;
@@ -93,9 +95,33 @@ export function coverageOf(candidates: readonly Candidate[], families: readonly 
   return coverage;
 }
 
+/**
+ * Signal families that have a source today: `library`, a registered loader, or a family a resolver attaches. With a
+ * scope kind, only that scope's resolver counts; without one, any registered resolver does.
+ */
+export function sourcedFamilies(deps: Pick<PipelineDeps, 'resolvers' | 'loaders'>, kind?: ScopeKind): Set<SignalFamily> {
+  const resolvers = (kind ? [deps.resolvers[kind]] : Object.values(deps.resolvers)) as Array<SpinScopeResolver | undefined>;
+  return new Set<SignalFamily>([
+    'library',
+    ...(Object.keys(deps.loaders) as SignalFamily[]).filter(family => deps.loaders[family]),
+    ...resolvers.flatMap(resolver => resolver?.provides ?? []),
+  ]);
+}
+
+export const isSourced = (requires: readonly SignalFamily[], sourced: ReadonlySet<SignalFamily>) => requires.every(family => sourced.has(family));
+
+/** The mode or first filter of `request` needing a family `sourced` lacks; such a request can never match anything. */
+export function unsourcedSelection(request: Pick<ParsedSpinRequest, 'mode' | 'filters'>, sourced: ReadonlySet<SignalFamily>): string | null {
+  if (request.mode && !isSourced(request.mode.requires, sourced)) return `mode ${request.mode.id}`;
+  const filter = request.filters.find(({ filter }) => !isSourced(filter.requires, sourced));
+  return filter ? `filter ${filter.filter.id}` : null;
+}
+
 async function resolveScope(request: ParsedSpinRequest, steamId: string, now: number, deps: PipelineDeps): Promise<SpinScopeResult> {
   const resolver = deps.resolvers[request.scope.kind] as ScopeResolver | undefined;
   if (!resolver) throw new SpinInputError(`scope ${request.scope.kind} is not available yet`);
+  const unsourced = unsourcedSelection(request, sourcedFamilies(deps, request.scope.kind));
+  if (unsourced) throw new SpinInputError(`${unsourced} is not available for scope ${request.scope.kind}`);
   const result: SpinScopeResult = await resolver.resolve(request.scope, { steamId, now });
   if (result.playtimeHidden) {
     const blocked = request.filters.find(({ filter }) => PLAYTIME_FILTERS.includes(filter.id));
