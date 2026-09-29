@@ -7,7 +7,7 @@
     }
   ],
   "hosting": {
-    "site": "REPLACE_WITH_HOSTING_SITE_ID",
+    "site": "qitgames",
     "public": "hosting",
     "ignore": ["**/.*"],
     "rewrites": [

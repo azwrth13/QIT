@@ -3,7 +3,7 @@ runConfig:
   maxInstances: 2
 env:
   - variable: NEXT_PUBLIC_BASE_URL
-    value: https://qit--quixotic-sol-510005-m4.us-central1.hosted.app
+    value: https://qitgames.web.app
     availability:
       - BUILD
       - RUNTIME
