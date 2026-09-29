@@ -135,7 +135,14 @@ export interface AppMetaRecord {
   tagids?: number[];
   release?: number;
   art?: Record<string, string>;
+  /** Steam review score bucket, 1 (overwhelmingly negative) to 9 (overwhelmingly positive) */
   review?: number;
+  /** percent of reviews that are positive, 0-100 */
+  reviewPercent?: number;
+  reviewCount?: number;
+  /** base game of a DLC, soundtrack or demo */
+  parentAppid?: number;
+  /** 'unknown' is the negative cache entry: Steam has no metadata for this app */
   state: 'ok' | 'unknown';
   fetchedAt: Timestamp;
 }
