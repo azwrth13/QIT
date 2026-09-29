@@ -3,8 +3,6 @@ import type { Game } from './games';
 import { getSteamGames, type SteamProfile } from './steam';
 import { getGenresForApps } from './genre-cache';
 
-export const AUTO_SYNC_COOKIE = 'library-autosync';
-
 export async function getStoredProfile(steamId: string): Promise<SteamProfile | null> {
   const snapshot = await db.collection('users').doc(steamId).get();
   return snapshot.exists ? snapshot.data() as SteamProfile : null;

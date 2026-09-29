@@ -8,7 +8,7 @@ const { cookieValues, getStoredGames, getLastSyncedAt, getStoredProfile, ensureU
 vi.mock('next/headers', () => ({ cookies: async () => ({
   get: (name: string) => cookieValues.has(name) ? { value: cookieValues.get(name) } : undefined,
 }) }));
-vi.mock('../src/lib/library-data', () => ({ AUTO_SYNC_COOKIE: 'library-autosync', getStoredGames, getLastSyncedAt, getStoredProfile, ensureUser, ownsGames }));
+vi.mock('../src/lib/library-data', () => ({ getStoredGames, getLastSyncedAt, getStoredProfile, ensureUser, ownsGames }));
 vi.mock('../src/lib/genre-cache', () => ({ getGenresForApps }));
 vi.mock('../src/lib/achievement-cache', () => ({ getCachedAchievementProgress }));
 
@@ -25,6 +25,7 @@ import { POST as genres } from '../src/app/api/games/genres/route';
 import { GET as achievements } from '../src/app/api/games/achievements/route';
 
 const steamId = '76561198000000000';
+const gamesRequest = (query = '') => new Request(`https://qit.example/api/games${query}`);
 const request = (body: string) => new Request('https://qit.example/api/games/genres', { method: 'POST', body });
 
 beforeEach(() => {
@@ -51,7 +52,7 @@ describe('route authentication', () => {
     if (credential === 'unsigned') cookieValues.set('steamid', steamId);
     if (credential === 'forged') cookieValues.set(SESSION_COOKIE, steamId);
     const responses = await Promise.all([
-      games(), profile(), friend(new Request(`https://qit.example/api/games/friend?steamid=${steamId}`)),
+      games(gamesRequest()), profile(), friend(new Request(`https://qit.example/api/games/friend?steamid=${steamId}`)),
       genres(request('{"appids":[10]}')),
     ]);
     expect(responses.map(response => response.status)).toEqual([401, 401, 401, 401]);
@@ -62,7 +63,7 @@ describe('route authentication', () => {
   it('looks up games using the verified session identity', async () => {
     cookieValues.set(SESSION_COOKIE, await createSession(steamId));
     getStoredGames.mockResolvedValue([{ appid: 10 }]);
-    const response = await games();
+    const response = await games(gamesRequest());
     expect(response.status).toBe(200);
     expect(getStoredGames).toHaveBeenCalledWith(steamId);
   });
@@ -70,23 +71,20 @@ describe('route authentication', () => {
 
 describe('post-login auto sync', () => {
   beforeEach(async () => { cookieValues.set(SESSION_COOKIE, await createSession(steamId)); });
-  it('requests one sync after sign-in and consumes the flag', async () => {
+  it('requests a sync of a stored library only when loaded from the sign-in redirect', async () => {
     getLastSyncedAt.mockResolvedValue('2026-01-01T00:00:00.000Z');
-    cookieValues.set('library-autosync', '1');
     getStoredGames.mockResolvedValue([{ appid: 10 }]);
-    const first = await games();
+    const first = await games(gamesRequest('?autosync=1'));
     expect(await first.json()).toMatchObject({ autoSync: true, lastSynced: '2026-01-01T00:00:00.000Z' });
-    expect(first.cookies.get('library-autosync')).toMatchObject({ value: '', maxAge: 0 });
-    cookieValues.delete('library-autosync');
-    const second = await games();
+    expect(first.headers.get('set-cookie')).toBeNull();
+    const second = await games(gamesRequest());
     expect(await second.json()).toMatchObject({ autoSync: false });
-    expect(second.cookies.get('library-autosync')).toBeUndefined();
   });
   it('requests a sync for a never-synced empty library but not for a synced empty one', async () => {
     getStoredGames.mockResolvedValue([]);
-    expect(await (await games()).json()).toMatchObject({ autoSync: true, lastSynced: null });
+    expect(await (await games(gamesRequest())).json()).toMatchObject({ autoSync: true, lastSynced: null });
     getLastSyncedAt.mockResolvedValue('2026-01-01T00:00:00.000Z');
-    expect(await (await games()).json()).toMatchObject({ autoSync: false });
+    expect(await (await games(gamesRequest())).json()).toMatchObject({ autoSync: false });
   });
 });
 
@@ -323,13 +321,12 @@ describe('OpenID callback route', () => {
     ensureUser.mockResolvedValue(undefined);
     const response = await callback(callbackRequest());
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('https://qit.example/library');
+    expect(response.headers.get('location')).toBe('https://qit.example/library?autosync=1');
     const session = response.cookies.get(SESSION_COOKIE);
     expect(response.cookies.get('qit_session')).toBeUndefined();
     expect(await verifySession(session?.value)).toBe(steamId);
     expect(session).toMatchObject({ httpOnly: true, sameSite: 'lax', path: '/' });
-    expect(response.cookies.get('library-autosync')?.value).toBe('1');
-    expect(response.cookies.get('library-synced')).toBeUndefined();
+    expect(response.cookies.getAll().filter(cookie => cookie.value).map(cookie => cookie.name)).toEqual([SESSION_COOKIE]);
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(OPENID_ENDPOINT);
     const verificationBody = vi.mocked(fetch).mock.calls[0][1]?.body;
     expect(verificationBody).toBeInstanceOf(URLSearchParams);

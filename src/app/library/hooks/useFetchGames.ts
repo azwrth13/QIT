@@ -32,7 +32,13 @@ export const useFetchGames = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/games');
+      const url = new URL(window.location.href);
+      const signedInNow = url.searchParams.has('autosync');
+      if (signedInNow) {
+        url.searchParams.delete('autosync');
+        window.history.replaceState(window.history.state, '', url);
+      }
+      const response = await fetch(signedInNow ? '/api/games?autosync=1' : '/api/games');
       if (response.status === 401) { setUnauthorized(true); setGames([]); return; }
       setUnauthorized(false);
       if (!response.ok) {
