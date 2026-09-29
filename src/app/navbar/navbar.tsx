@@ -6,6 +6,7 @@ import { ComputerIcon as SteamIcon } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useFetchUserProfile } from './hooks/useFetchUserProfile';
 import LogoutConfirmModal from './components/LogoutConfirmModal';
+import { navbarItems } from './nav-items';
 
 export default function Navbar() {
   const { profile, loading } = useFetchUserProfile();
@@ -36,8 +37,7 @@ export default function Navbar() {
       <div className="container mx-auto px-4 min-h-16 py-2 flex flex-wrap items-center justify-between gap-2">
         <Link href="/" className="text-xl font-pixel font-bold text-black">QIT</Link>
         <nav aria-label="Main navigation" className="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
-          <Link href="/" className="font-bold text-black hover:underline">Home</Link>
-          <Link href="/library" className="font-bold text-black hover:underline">Library</Link>
+          {navbarItems(Boolean(profile)).map(item => <Link key={item.id} href={item.href} className="font-bold text-black hover:underline">{item.label}</Link>)}
           {loading ? <span className="text-black text-sm">Loading...</span> : profile ?
             <details ref={menuRef} className="relative" onKeyDown={event => { if (event.key === 'Escape') { menuRef.current?.removeAttribute('open'); menuRef.current?.querySelector('summary')?.focus(); } }}>
               <summary aria-label="Profile menu" className="cursor-pointer list-none border-2 border-black bg-white p-1">
