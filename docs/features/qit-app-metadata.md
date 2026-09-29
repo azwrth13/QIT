@@ -38,7 +38,7 @@ For feature 18 (filters): `FILTERABLE_FLAGS` lists `{ id, label, bit }` for the 
 
 ## Filling the library index
 
-`enrichLibraryFlags(steamId, { maxFetch, force })` reads the index (four reads), finds entries whose `f` is missing or unknown, loads their metadata with `getAppMeta`, and patches `f` through `patchLibIndex` in its default existing-only mode, so it can never resurrect a game the library sync removed and never touches another writer's fields. It returns `{ requested, fetched, patched, unresolved, coverage }`; repeat while `unresolved > 0`. Apps Steam does not know get `f: 0`; an unknown answer never overwrites flags that are already known.
+`enrichLibraryFlags(steamId, { maxFetch, force })` reads the index (four reads), finds entries whose `f` is missing or unknown, loads their metadata with `getAppMeta`, and patches `f` through `patchLibIndex` in its default existing-only mode, so it can never resurrect a game the library sync removed and never touches another writer's fields. It returns `{ requested, fetched, patched, unresolved, coverage }`; repeat while `unresolved > 0`. Apps Steam does not know get `f: 0`; an unknown answer never overwrites flags that are already known, and an entry whose `f` is unchanged is not rewritten.
 
 The package adds no route: callers (the spin pipeline's enrichment, or a scan route) invoke these functions.
 
