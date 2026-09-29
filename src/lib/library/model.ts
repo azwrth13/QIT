@@ -1,11 +1,10 @@
 import { lastPlayedAt, type Game } from '../games';
-import type { LibrarySignals } from '../roulette/types';
 import type { OwnedGame } from '../steam/owned';
 import type { LibIndexPatch } from '../store/lib-index';
 import type { LibIndexEntry } from '../store/types';
 
 // Pure library-model logic: Steam game -> Game -> library index entry / per-game document and back,
-// the sync diff, playtime-hidden detection and roulette library signals. No Firestore, no fetch.
+// the sync diff and playtime-hidden detection. No Firestore, no fetch.
 
 /** The index entry fields this package owns. app-metadata (`f`) and achievements-data (`ap`, `au`, `at`) own the rest. */
 export const LIBRARY_INDEX_FIELDS = ['n', 'i', 'p', 'w', 'r', 's'] as const;
@@ -144,16 +143,4 @@ export function detectPlaytimeHidden(games: Game[]): boolean {
   if (!games.length) return false;
   if (games.some(game => minutes(game.playtime_forever) > 0 || minutes(game.playtime_2weeks) > 0)) return false;
   return games.length >= PLAYTIME_HIDDEN_MIN_GAMES || games.some(game => (game.rtime_last_played ?? 0) > 0);
-}
-
-/** Roulette library signals. With playtime hidden, the 0 minutes Steam reports cannot say "never played" or "not recently". */
-export function librarySignals(game: Game, playtimeHidden = false): LibrarySignals {
-  const lastPlayed = game.rtime_last_played ?? null;
-  return {
-    name: game.name,
-    iconHash: game.img_icon_url || null,
-    playtimeForever: minutes(game.playtime_forever),
-    playtime2Weeks: playtimeHidden || game.playtime_2weeks === undefined ? null : minutes(game.playtime_2weeks),
-    lastPlayedAt: playtimeHidden && lastPlayed === 0 ? null : lastPlayed,
-  };
 }

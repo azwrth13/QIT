@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { lastPlayedAt, type Game } from '../src/lib/games';
 import {
-  detectPlaytimeHidden, fromGameDoc, fromIndexEntry, fromOwnedGame, indexPatchFor, librarySignals, planSync,
+  detectPlaytimeHidden, fromGameDoc, fromIndexEntry, fromOwnedGame, indexPatchFor, planSync,
   PLAYTIME_HIDDEN_MIN_GAMES, toGameDoc, toIndexFields,
 } from '../src/lib/library/model';
 import { getSteamGames } from '../src/lib/steam';
@@ -159,23 +159,5 @@ describe('detectPlaytimeHidden', () => {
     expect(detectPlaytimeHidden(zero(PLAYTIME_HIDDEN_MIN_GAMES - 1, { rtime_last_played: 0 }))).toBe(false);
     expect(detectPlaytimeHidden([...zero(50), fromOwnedGame(owned({ appid: 7, playtime_forever: 1 }))])).toBe(false);
     expect(detectPlaytimeHidden([...zero(50), fromOwnedGame(owned({ appid: 7, playtime_2weeks: 3 }))])).toBe(false);
-  });
-});
-
-describe('librarySignals', () => {
-  it('maps a game to roulette library signals, keeping unknown apart from zero', () => {
-    expect(librarySignals(fromOwnedGame(owned({ playtime_forever: 90, playtime_2weeks: 30, rtime_last_played: 1_700_000_000 })))).toEqual({
-      name: 'Portal 2', iconHash: 'abc', playtimeForever: 90, playtime2Weeks: 30, lastPlayedAt: 1_700_000_000,
-    });
-    expect(librarySignals({ appid: 620, name: 'Portal 2' })).toEqual({
-      name: 'Portal 2', iconHash: null, playtimeForever: 0, playtime2Weeks: null, lastPlayedAt: null,
-    });
-  });
-
-  it('treats recent playtime and "never played" as unknown when playtime is hidden', () => {
-    const game = fromOwnedGame(owned({ rtime_last_played: 0 }));
-    expect(librarySignals(game)).toMatchObject({ playtime2Weeks: 0, lastPlayedAt: 0 });
-    expect(librarySignals(game, true)).toMatchObject({ playtime2Weeks: null, lastPlayedAt: null });
-    expect(librarySignals(fromOwnedGame(owned({ rtime_last_played: 1_700_000_000 })), true).lastPlayedAt).toBe(1_700_000_000);
   });
 });
