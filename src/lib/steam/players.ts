@@ -42,10 +42,10 @@ export type FriendListResult = { state: 'public'; friends: Friend[] } | { state:
 
 export async function getFriendList(steamId: string, client: SteamClient = getSteamClient()): Promise<FriendListResult> {
   if (!isSteamId(steamId)) throw new Error('Invalid Steam ID');
-  // Steam answers 401 (and sometimes 403) for a private friends list.
+  // Steam answers a JSON 401 (and sometimes 403) for a private friends list; a bad key's HTML 401 or 403 is not private.
   const { status, data } = await client.request<{ friendslist?: { friends?: Array<{ steamid?: string; friend_since?: number }> } }>(
     steamKeyedUrl('/ISteamUser/GetFriendList/v1/', { steamid: steamId, relationship: 'friend' }), { accept: [401, 403] });
-  if (status === 403 && data === null) throw new SteamClientError('unavailable', status);
+  if ((status === 401 || status === 403) && data === null) throw new SteamClientError('unavailable', status);
   if (!data?.friendslist) return { state: 'private' };
   const seen = new Set<string>();
   const friends: Friend[] = [];

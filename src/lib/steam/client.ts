@@ -20,9 +20,8 @@ export class SteamClientError extends SteamApiError {
   }
 }
 
-/** 401 is Steam's private friends list. A 403 is not trusted as private: a bad or blocked key is also a 403. */
+/** A thrown 401 or 403 is never private: a bad or blocked key answers with an HTML 401 or 403. */
 export function classifySteamStatus(status: number): SteamErrorKind {
-  if (status === 401) return 'private';
   if (status === 404) return 'not_found';
   if (status === 429) return 'rate_limited';
   return 'unavailable';

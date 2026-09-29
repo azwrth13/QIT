@@ -28,10 +28,10 @@ Defaults are in `STEAM_CLIENT_DEFAULTS`:
 
 | kind | when |
 |---|---|
-| `private` | 401 (Steam's answer for a private friends list). A 403 is never thrown as `private`, because a bad or blocked key is also a 403; wrappers return a private state only after checking Steam's JSON body |
+| `private` | never thrown for a status. A 401 or 403 is never thrown as `private`, because a bad or blocked key answers with an HTML 401 or 403; wrappers return a private state only after checking Steam's JSON body |
 | `not_found` | 404 |
 | `rate_limited` | 429 after the retries run out, or a `Retry-After` that is too long |
-| `unavailable` | 5xx, 408, 403, any other 4xx, network error, timeout, deadline reached, or a 2xx that is not JSON |
+| `unavailable` | 5xx, 408, 401, 403, any other 4xx, network error, timeout, deadline reached, or a 2xx that is not JSON |
 | `budget_exhausted` | the daily key budget is used up; Steam was not called |
 
   Error messages never contain URLs, keys or bodies, and the original network error is dropped because its cause can contain the URL. Log with `logServerError` only.
@@ -60,7 +60,7 @@ These follow the plan's rule that unknown is its own state and never zero:
 
 - `getOwnedGames`: `{ state: 'private' }`, or `{ state: 'public', gameCount, games }`. Private is only Steam's 200 answer with an empty `response`; any 403 throws, because a bad or blocked key answers with an HTML 403. An empty public library has `game_count: 0` and is public, not private. `include_appinfo=1` and `include_played_free_games=1` are sent by default. `playtime_2weeks` is 0 when Steam leaves it out. `rtime_last_played` is `null` when Steam leaves it out, and a 0 is kept as Steam sent it.
 - `getPlayerAchievements`: `ok` / `no_stats` / `private`. A 400 or 403 counts as `no_stats` or `private` only when the body is Steam's own `playerstats.success: false`. Any other 4xx body throws, so a key or edge block is not cached as "private".
-- `getRecentlyPlayedGames` and `getFriendList`: a 403 whose body is not JSON (Steam's key-block page) throws `unavailable`. `getRecentlyPlayedGames` is private on a JSON 403 or a `response` without `total_count`; `getFriendList` is private on a 401, a JSON 403, or a body without `friendslist`.
+- `getRecentlyPlayedGames` and `getFriendList`: a 403 (or, for `getFriendList`, a 401) whose body is not JSON (Steam's key-block page) throws `unavailable`. `getRecentlyPlayedGames` is private on a JSON 403 or a `response` without `total_count`; `getFriendList` is private on a JSON 401, a JSON 403, or a body without `friendslist`.
 - `getCurrentPlayers`: returns `null` when Steam answers 404 with `result: 42` (the app has no counter).
 - `getGlobalAchievementPercentages`: returns `null` on `403 {}` (the app has no stats). A 403 whose body is not JSON (an IP or edge block) throws `unavailable`. Steam sends each percent as a string, and it is parsed to a number.
 - `getStoreItems`: returns a `Map` holding every requested appid. The value is `null` when Steam reports `success: 15` (hidden or delisted app). Items are matched by `id`, because hidden apps come back with `appid: 0`.
@@ -126,7 +126,7 @@ The test accounts were the Steam accounts already stored in QIT's own Firestore 
 6. `GetRecentlyPlayedGames`: HTTP 200, `response` has `total_count, games`. Each game has `appid, name, playtime_2weeks, playtime_forever, img_icon_url`, plus per-platform playtime for account A. Account C also answers 200 with games, even though its achievements are private.
 7. `GetFriendList`: a private list is **HTTP 401 with a JSON body `{}`**, not an HTML page, and no 403 was seen. A public list is HTTP 200 with `friendslist.friends` of `steamid, relationship, friend_since`.
 
-Bad key (checked with a made-up key, no account): HTTP 403, `text/html`, body starting "Forbidden ... Access is denied. Retrying will not help. Please verify your key= parameter". So a 403 alone cannot mean "private". `classifySteamStatus` maps a thrown 403 to `unavailable`. `getOwnedGames` throws on any 403. `getRecentlyPlayedGames`, `getFriendList` and `getGlobalAchievementPercentages` throw on a non-JSON 403, and `getPlayerAchievements` throws on any 400 or 403 that lacks `success: false`.
+Bad key (checked with a made-up key, no account): HTTP 403, `text/html`, body starting "Forbidden ... Access is denied. Retrying will not help. Please verify your key= parameter". `GetOwnedGames` instead answers HTTP 401, `text/html`, "Unauthorized ... Please verify your key= parameter". So a 401 or 403 alone cannot mean "private". `classifySteamStatus` maps a thrown 401 or 403 to `unavailable`. `getOwnedGames` throws on any 401 or 403. `getRecentlyPlayedGames`, `getFriendList` and `getGlobalAchievementPercentages` throw on a non-JSON 403, and `getPlayerAchievements` throws on any 400 or 403 that lacks `success: false`.
 
 None of the real responses disproved a wrapper's parsing. The HTML 403 on a bad key is why the thrown 403 kind changed.
 
@@ -137,5 +137,5 @@ Corrections to the plan's Steam API table:
 - `GetFriendList`: a private list is 401 with a JSON `{}` body; no 403 was seen.
 - `GetPlayerAchievements`: the 400 and 403 bodies are `playerstats: { success: false, error }` with the messages above. With `l=english`, a hidden achievement's `description` is an empty string.
 - `GetSchemaForGame`: an app without stats answers HTTP 200 with an empty `game` object, not an error status. Hidden achievements have no `description` field at all.
-- Keyed endpoints: a wrong or blocked key answers with an HTML 403, the same status the plan lists for private data. A 403 therefore counts as private only when it carries a JSON body from Steam, never from the status alone.
+- Keyed endpoints: a wrong or blocked key answers with an HTML 403 (an HTML 401 on `GetOwnedGames`), the same status the plan lists for private data. A 403 therefore counts as private only when it carries a JSON body from Steam, never from the status alone.
 - Still unverified, because no stored account has the setting: the `GetOwnedGames` private-Game-details shape, the hidden-total-playtime behavior, friends-only summary fields, and the private 403 from `GetRecentlyPlayedGames`.

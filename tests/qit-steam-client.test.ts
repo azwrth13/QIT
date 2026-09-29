@@ -82,7 +82,7 @@ describe('URL builders', () => {
 describe('error taxonomy and Retry-After', () => {
   it('classifies statuses', () => {
     expect([401, 403, 404, 429, 400, 414, 408, 500, 503, 0].map(classifySteamStatus)).toEqual(
-      ['private', 'unavailable', 'not_found', 'rate_limited', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable']);
+      ['unavailable', 'unavailable', 'not_found', 'rate_limited', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable']);
   });
   it('parses delta seconds and HTTP dates', () => {
     expect(parseRetryAfter('3')).toBe(3000);
@@ -285,8 +285,9 @@ describe('owned games', () => {
   });
   it('a key-block 403 is an error, never a cached private state', async () => {
     const block = () => new Response('<html><head><title>Forbidden</title></head><body>Access is denied.</body></html>', { status: 403 });
-    const { client } = harness([block(), block(), json({}, 403)]);
+    const { client } = harness([block(), new Response('<html>Unauthorized</html>', { status: 401 }), block(), json({}, 403)]);
     await expect(getOwnedGames(steamId, {}, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
+    await expect(getOwnedGames(steamId, {}, client)).rejects.toMatchObject({ kind: 'unavailable', status: 401 });
     await expect(getRecentlyPlayedGames(steamId, undefined, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
     expect(await getRecentlyPlayedGames(steamId, undefined, client)).toEqual({ state: 'private' });
   });
@@ -302,14 +303,16 @@ describe('players', () => {
     expect(urls.map(url => url.searchParams.get('steamids')!.split(',').length)).toEqual([100, 100, 50]);
     expect(summaries.get(ids[5])).toMatchObject({ personastate: 1 });
   });
-  it('friend list: 401, a JSON 403 and a missing list are private; an HTML 403 throws', async () => {
+  it('friend list: a JSON 401 or 403 and a missing list are private; an HTML 401 or 403 throws', async () => {
     const { client } = harness([
       json({ friendslist: { friends: [{ steamid: '76561198000000001', friend_since: 5 }, { steamid: '76561198000000001' }, { steamid: 'x' }] } }),
-      new Response('<html>Unauthorized</html>', { status: 401 }), json({}, 403), json({}),
+      json({}, 401), json({}, 403), json({}),
+      new Response('<html>Unauthorized</html>', { status: 401 }),
       new Response('<html>Forbidden</html>', { status: 403 }),
     ]);
     expect(await getFriendList(steamId, client)).toEqual({ state: 'public', friends: [{ steamid: '76561198000000001', friend_since: 5 }] });
     for (let i = 0; i < 3; i++) expect(await getFriendList(steamId, client)).toEqual({ state: 'private' });
+    await expect(getFriendList(steamId, client)).rejects.toMatchObject({ kind: 'unavailable', status: 401 });
     await expect(getFriendList(steamId, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
   });
   it('resolves vanity names', async () => {
