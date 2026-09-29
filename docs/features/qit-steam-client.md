@@ -1,6 +1,6 @@
 # Steam client
 
-`src/lib/steam/` is the one HTTP path for new Steam calls. `src/lib/steam.ts` is unchanged: its exports stay as they are, and it imports nothing from `src/lib/steam/`, because `tests/library.test.mjs` loads it through Node type stripping. The new modules import `isSteamId`, `steamApiUrl` and `SteamApiError` from `steam.ts`, so the dependency points one way only. Existing routes keep using `steamJson` until their owning package moves them over.
+`src/lib/steam/` is the one HTTP path for new Steam calls. `src/lib/steam.ts` is unchanged: its exports stay as they are, and it imports nothing from `src/lib/steam/`, as the plan requires for this hot file. The new modules import `isSteamId`, `steamApiUrl` and `SteamApiError` from `steam.ts`, so the dependency points one way only. Existing routes keep using `steamJson` until their owning package moves them over.
 
 | File | Contents |
 |---|---|

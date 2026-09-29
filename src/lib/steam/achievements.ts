@@ -18,7 +18,7 @@ export type PlayerAchievementsResult =
   | { state: 'ok'; achievements: PlayerAchievement[] }
   /** HTTP 400, or an app whose stats list no achievements. */
   | { state: 'no_stats' }
-  /** HTTP 403: the player's Game details are private. */
+  /** HTTP 403 "Profile is not public"; seen even for accounts whose owned games are visible. */
   | { state: 'private' };
 
 type RawPlayerAchievement = { apiname?: string; achieved?: number; unlocktime?: number; name?: string; description?: string };
