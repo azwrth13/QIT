@@ -71,6 +71,7 @@ export const paths = {
     `${user(steamId)}/${C.achievementProgress}/${appIdSegment(appid)}`,
   friendsMeta: (steamId: string) => `${user(steamId)}/${C.meta}/friends`,
   pinnedMeta: (steamId: string) => `${user(steamId)}/${C.meta}/pinned`,
+  achievementsMeta: (steamId: string) => `${user(steamId)}/${C.meta}/achievements`,
   rolls: (steamId: string) => `${user(steamId)}/${C.rolls}`,
   roll: (steamId: string, rollId: string) => `${user(steamId)}/${C.rolls}/${docIdSegment(rollId)}`,
   events: (steamId: string) => `${user(steamId)}/${C.events}`,

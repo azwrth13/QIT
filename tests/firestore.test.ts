@@ -76,7 +76,9 @@ it('caches Steam no-stats and private achievement responses but not other failur
   body = { playerstats: { success: false, error: 'Profile is not public' } };
   expect(await getCachedAchievementProgress(steamId, 200002)).toBeNull();
   expect(await getCachedAchievementProgress(steamId, 200002)).toBeNull();
+  expect(await getCachedAchievementProgress(steamId, 200006)).toBeNull();
   expect(steamCalls).toBe(2);
+  await db.doc(`users/${steamId}/meta/achievements`).delete();
 
   for (const [appid, nextStatus] of [[200003, 500], [200004, 403]]) {
     status = nextStatus;
@@ -87,7 +89,7 @@ it('caches Steam no-stats and private achievement responses but not other failur
 });
 
 it('returns fetched achievement progress when the cache write fails', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ playerstats: { success: true, achievements: [{ achieved: 1 }, { achieved: 0 }] } })));
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ playerstats: { success: true, achievements: [{ apiname: 'A', achieved: 1 }, { apiname: 'B', achieved: 0 }] } })));
   const ref = db.doc(`users/${steamId}/achievementProgress/200005`);
   const set = vi.spyOn(Object.getPrototypeOf(ref), 'set').mockRejectedValueOnce(new Error('write failed'));
   const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
