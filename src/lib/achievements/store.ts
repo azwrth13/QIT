@@ -11,8 +11,9 @@ import {
 } from './model';
 
 // The single writer of `users/{steamId}/achievementProgress/{appid}`, of the user's private marker
-// (`users/{steamId}/meta/achievements`) and of the `ap/au/at` fields of the library index. Readers get `AchievementRecord`s; anything this package did not write (pre-v2 or malformed) reads as null,
-// which is stale, so it is refetched and rewritten on first use.
+// (`users/{steamId}/meta/achievements`) and of the `ap/au/at` fields of the library index. Readers get
+// `AchievementRecord`s; anything this package did not write (pre-v2 or malformed) reads as null, which is stale, so it
+// is refetched and rewritten on first use.
 
 const STATES: readonly AchievementState[] = ['ok', 'no_stats'];
 

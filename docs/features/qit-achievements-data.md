@@ -96,7 +96,7 @@ Decision D13: the UI runs this loop with a progress bar the first time an achiev
 
 ## Compatibility notes
 
-- `getAchievementProgress` in `src/lib/steam.ts` (lines 123 to 140) is no longer used by app code. It is left in place, still covered by `tests/security.test.ts`, because removing it would create adjacent-hunk merge conflicts with `qit-library-model`'s edits to `getSteamGames`. A later cleanup can delete it. `AchievementProgress` is still imported from there.
+- `getAchievementProgress` in `src/lib/steam.ts` is no longer used by app code. It is left in place, still covered by `tests/security.test.ts`, because removing it would create adjacent-hunk merge conflicts with `qit-library-model`'s edits to `getSteamGames`. A later cleanup can delete it. `AchievementProgress` is still imported from there.
 - The fixture in `tests/firestore.test.ts` ("returns fetched achievement progress when the cache write fails") now gives its two achievements `apiname`s. Real Steam answers always carry them, and the shared wrapper drops entries without one.
 - `tests/firestore.test.ts` ("caches Steam no-stats and private achievement responses but not other failures") now also checks that a private answer covers the user's other games, and deletes the private marker before its failure cases.
 - `achievementSupportHint` reads the `f` bits through `STORE_FLAG_BITS` from `src/lib/apps/metadata.ts`, so the bit values are defined only there.
