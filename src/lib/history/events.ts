@@ -1,4 +1,4 @@
-import { Timestamp, type QueryDocumentSnapshot, type Transaction } from 'firebase-admin/firestore';
+import { Timestamp, type Transaction } from 'firebase-admin/firestore';
 import { db } from '../firestore';
 import { appIdSegment, docIdSegment, paths } from '../store/paths';
 import { stripUndefined } from '../store/converters';
@@ -22,15 +22,6 @@ export interface EventInput {
   refId?: string;
   /** Small JSON-safe details; at most 2 KiB serialized. */
   meta?: Record<string, unknown>;
-}
-
-export interface EventView {
-  id: string;
-  type: string;
-  at: Date;
-  appid: number | null;
-  refId: string | null;
-  meta: Record<string, unknown>;
 }
 
 /** Throws when the event is malformed. Pure; exported for tests. */
@@ -72,30 +63,4 @@ export function stageEvent(tx: Transaction, steamId: string, event: EventInput, 
 export async function recordEvent(steamId: string, event: EventInput, now = Date.now()): Promise<string> {
   validateEvent(event);
   return runTransaction(async tx => stageEvent(tx, steamId, event, now));
-}
-
-function toEventView(snapshot: QueryDocumentSnapshot): EventView | null {
-  const data = snapshot.data();
-  if (typeof data.type !== 'string' || !(data.at instanceof Timestamp)) return null;
-  return {
-    id: snapshot.id,
-    type: data.type,
-    at: data.at.toDate(),
-    appid: typeof data.appid === 'number' ? data.appid : null,
-    refId: typeof data.refId === 'string' ? data.refId : null,
-    meta: data.meta && typeof data.meta === 'object' ? data.meta as Record<string, unknown> : {},
-  };
-}
-
-/**
- * Newest first. With `type`, filters by type without a Firestore order (no composite index) and sorts the page in
- * memory, so `limit` then bounds the reads, not the recency: it returns at most `limit` events of that type.
- */
-export async function listEvents(steamId: string, { type, limit = 100 }: { type?: string; limit?: number } = {}): Promise<EventView[]> {
-  if (type !== undefined && !EVENT_TYPE.test(type)) throw new Error('Invalid event type');
-  const collection = db.collection(paths.events(steamId));
-  const query = type === undefined ? collection.orderBy('at', 'desc') : collection.where('type', '==', type);
-  const snapshot = await query.limit(Math.max(1, Math.min(limit, 500))).get();
-  return snapshot.docs.map(toEventView).filter((event): event is EventView => !!event)
-    .sort((a, b) => b.at.getTime() - a.at.getTime());
 }

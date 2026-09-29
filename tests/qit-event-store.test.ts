@@ -155,7 +155,7 @@ describe('roll cursors', () => {
     expect(decodeRollCursor(cursor)).toEqual({ at, id: 'AbC123' });
   });
   it('rejects malformed cursors', () => {
-    for (const cursor of ['', '1.2', '1.2.a/b', 'x.1.a', '1.1000000000.a', '1.2.a.b']) expect(decodeRollCursor(cursor)).toBeNull();
+    for (const cursor of ['', '1.2', '1.2.a/b', 'x.1.a', '1.1000000000.a', '1.2.a.b', '999999999999.0.abc']) expect(decodeRollCursor(cursor)).toBeNull();
   });
 });
 

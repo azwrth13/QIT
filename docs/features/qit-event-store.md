@@ -5,7 +5,7 @@
 | Module | Only writer of | Exports |
 |---|---|---|
 | `rolls.ts` | `users/{id}/rolls/{rollId}` | `recordRoll`, `markAccepted`, `markRerolled`, `markPlayed`, `getRoll`, `listRolls`, `recentlyRolled` |
-| `events.ts` | `users/{id}/events/{eventId}` (append-only) | `recordEvent`, `stageEvent` (inside a caller's transaction), `listEvents` |
+| `events.ts` | `users/{id}/events/{eventId}` (append-only) | `recordEvent`, `stageEvent` (inside a caller's transaction) |
 | `stats.ts` | `users/{id}/stats/summary` | `readStats`; counters move only through events |
 | `exclusions.ts` | `users/{id}/prefs/exclusions` | `addExclusion`, `removeExclusion`, `readExclusions` |
 | `time.ts` | none (pure) | `endOfLocalDay`, `localDate`, `isValidTimeZone` |
@@ -24,8 +24,6 @@ A roll stores `appid`, `name`, `modeId`, `filters`, `scope` (the full `Scope`, s
 `recordEvent(steamId, { type, appid?, refId?, meta? })` appends an event and increments counters. Types are `[a-z][a-z0-9_]{0,39}`; `meta` is plain JSON of at most 2 KiB. This package writes `roll`, `accept`, `reroll`, `played`, `exclude` and `unexclude`. Other packages add their own types without editing this module. A package that changes one of its own documents in a transaction calls `stageEvent(tx, ...)` so the change and the event commit together.
 
 Every event increments `counters[type]`. For `roll` and `accept` it also increments `type:modeId:<mode>`, for `played` it increments `played:source:<source>`, and for `exclude` it increments `exclude:scope:<scope>` (`COUNTER_DIMENSIONS` in `stats.ts`). Increments are blind merge writes, so concurrent events do not contend and none are lost. The `streak` field is left for the streaks package, which extends `stats.ts` rather than writing the summary elsewhere.
-
-`listEvents(steamId, { type?, limit })` returns events newest first. With `type`, the query filters by type without a Firestore order (no composite index), so it returns up to `limit` events of that type, sorted in memory. When there are more than `limit`, that is not necessarily the newest `limit`.
 
 ## Exclusions
 

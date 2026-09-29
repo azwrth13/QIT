@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { describe, expect, it } from 'vitest';
 import { db } from '../src/lib/firestore';
-import { listEvents, recordEvent } from '../src/lib/history/events';
+import { recordEvent } from '../src/lib/history/events';
 import { ExclusionLimitError, MAX_EXCLUSIONS, addExclusion, readExclusions, removeExclusion } from '../src/lib/history/exclusions';
 import {
   getRoll, listRolls, markAccepted, markPlayed, markRerolled, recentlyRolled, recordRoll, type RollInput,
@@ -16,6 +16,9 @@ let nextId = 0;
 const freshUser = () => `7656119901${String(Date.now() % 1e5).padStart(5, '0')}${String(nextId++ % 100).padStart(2, '0')}`;
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-09-28T10:00:00Z');
+
+const listEvents = async (steamId: string) =>
+  (await db.collection(paths.events(steamId)).orderBy('at', 'desc').get()).docs.map(doc => doc.data());
 
 const input = (overrides: Partial<RollInput> = {}): RollInput => ({
   appid: 620, name: 'Portal 2', modeId: 'dust-collector', filters: [{ id: 'never-played' }], scope: { kind: 'library' },
@@ -190,10 +193,9 @@ describe.skipIf(!emulated)('events and stats (emulator)', () => {
     await recordEvent(steamId, { type: 'challenge_complete', appid: 400 }, NOW + 1);
     await recordEvent(steamId, { type: 'daily_accept', appid: 620 }, NOW + 2);
     expect((await readStats(steamId)).counters).toEqual({ challenge_complete: 2, daily_accept: 1 });
-    const challenges = await listEvents(steamId, { type: 'challenge_complete' });
-    expect(challenges.map(event => event.appid)).toEqual([400, 620]);
-    expect(challenges[1]).toMatchObject({ refId: 'c1', meta: { tier: 5 } });
-    expect((await listEvents(steamId, { limit: 1 }))[0].type).toBe('daily_accept');
+    const events = await listEvents(steamId);
+    expect(events.map(event => event.type)).toEqual(['daily_accept', 'challenge_complete', 'challenge_complete']);
+    expect(events[2]).toMatchObject({ appid: 620, refId: 'c1', meta: { tier: 5 } });
     await expect(recordEvent(steamId, { type: 'Bad Type' })).rejects.toThrow('Invalid event type');
   });
 

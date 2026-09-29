@@ -221,11 +221,14 @@ export function encodeRollCursor(roll: Pick<RollView, 'id'> & { at: Timestamp })
   return `${roll.at.seconds}.${roll.at.nanoseconds}.${roll.id}`;
 }
 
+const MAX_TIMESTAMP_SECONDS = 253_402_300_799;
+
 export function decodeRollCursor(cursor: string): { at: Timestamp; id: string } | null {
   const match = /^(\d{1,12})\.(\d{1,9})\.([A-Za-z0-9_-]{1,128})$/.exec(cursor);
   if (!match) return null;
+  const seconds = Number(match[1]);
   const nanos = Number(match[2]);
-  return nanos < 1e9 ? { at: new Timestamp(Number(match[1]), nanos), id: match[3] } : null;
+  return seconds <= MAX_TIMESTAMP_SECONDS && nanos < 1e9 ? { at: new Timestamp(seconds, nanos), id: match[3] } : null;
 }
 
 /** Newest first. Orders by `at` then document id, which a single-field index serves (no composite index). */
