@@ -194,6 +194,11 @@ export interface FilterContext {
   now: number;
   thresholds: Thresholds;
   scope: Scope;
+  /**
+   * Every player in the scope, readable or not (`ScopeResult.members` plus `unavailable`). Omitted
+   * means only the players in `signals.group` are known.
+   */
+  members?: string[];
 }
 
 export interface Filter<P = unknown> {

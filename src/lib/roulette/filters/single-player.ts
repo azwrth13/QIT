@@ -1,8 +1,14 @@
-import { stubFilter } from '../stubs';
+import type { Filter } from '../types';
+import { parseNoParams, storeFlagVerdict, type NoParams } from './params';
 
-export default stubFilter({
+const singlePlayer: Filter<NoParams> = {
   id: 'single-player',
   label: 'Single-player',
-  description: 'Games with a single-player mode.',
+  description: 'Games you can play on your own.',
   requires: ['store'],
-});
+  stub: false,
+  parse: parseNoParams,
+  test: candidate => storeFlagVerdict(candidate, 'singlePlayer'),
+};
+
+export default singlePlayer;
