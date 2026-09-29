@@ -1,12 +1,12 @@
 # Foundation: roulette contracts, registries, nav flags and test plumbing
 
-Shared contracts that later packages build against. Nothing here changes behavior yet: every mode and filter is a stub, and the navbar still shows only Home and Library.
+Shared contracts that later packages build against. Nothing here changes behavior yet: every mode and filter starts as a stub (see `docs/features/qit-roulette-core.md` for Pure Random, the first real mode), and the navbar still shows only Home and Library.
 
 ## Roulette contracts (`src/lib/roulette/`)
 
 - `types.ts` holds the contracts: `Candidate`, `Signals`, `Mode`, `Filter`, `Reason`, `Card`, `Scope`, `ScopeResolver`, `SpinRequest` and `SpinResponse`, plus the id lists `MODE_IDS`, `FILTER_IDS` and `SCOPE_KINDS`. The roulette engines are pure: they never import Firestore or `fetch`.
 - Unknown is not zero. If a signal family is missing from `Signals`, it has not been loaded. A `null` field means the value is unknown, for example an app with no player counter or a game whose achievements are not scanned yet. Filters return `'pass' | 'fail' | 'unknown'` so the pipeline decides the policy and reports `coverage`.
-- Reasons are structured as `{ code, params }`, typed by `ReasonParams`. Only `reasons.ts` (from `qit-roulette-core`) turns them into text. A new reason code means one new entry in `ReasonParams`.
+- Reasons are structured as `{ code, params }`, typed by `ReasonParams`. Only `reasons.ts` turns them into text; `docs/features/qit-roulette-core.md` covers the codes and how to add one.
 - `thresholds.ts` exports `THRESHOLDS` (frozen). These are the section 2.4 defaults plus D4 (a played delta of 10 minutes), D6 (anti-repeat options off, 7, 30 and 90 days) and D15 (a floor of 100 players). Engines receive thresholds through `ScoreContext` or `FilterContext` rather than importing the constant, so tests can change them.
 
 ## Mode and filter registries
