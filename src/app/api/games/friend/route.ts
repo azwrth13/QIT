@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSteamId } from '@/lib/auth';
 import type { Game } from '@/lib/games';
 import { createLimiter } from '@/lib/http/guards';
-import { getLibraryFor } from '@/lib/social/libraries';
+import { getSteamLibrary } from '@/lib/social/libraries';
 import { isSteamId, logServerError } from '@/lib/steam';
 
 // Per signed-in user, per server instance: a burst of 20 lookups, then one every three seconds.
@@ -20,8 +20,8 @@ export async function GET(req: Request) {
       { status: 429, headers: { ...headers, 'Retry-After': String(wait) } });
   }
   try {
-    // Repeat lookups are served from the QIT library index or the 30-minute cache of Steam libraries.
-    const [library] = await getLibraryFor([steamId]);
+    // Always Steam (repeat lookups from its 30-minute cache), never another user's stored QIT index.
+    const library = await getSteamLibrary(steamId);
     if (library.state === 'not_found') return NextResponse.json({ error: 'Steam profile not found.' }, { status: 404, headers });
     if (library.state === 'private') {
       return NextResponse.json({ error: 'This friend’s game details are private. Ask them to set Game details to Public in Steam.' }, { status: 403, headers });

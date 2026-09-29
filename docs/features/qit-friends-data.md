@@ -6,7 +6,7 @@
 |---|---|
 | `friends.ts` | `getFriends(steamId)`: the 15-minute friends snapshot with status and current game. The only writer of `users/{id}/meta/friends`. |
 | `pinned.ts` | `pinPlayer`, `unpinPlayer`: pinned players for a private friends list (D11). The only writer of `users/{id}/meta/pinned`. |
-| `libraries.ts` | `getLibraryFor(ids)`: other players' libraries with a state per player. The only writer of `publicLibraries/{steamId}`. |
+| `libraries.ts` | `getLibraryFor(ids)`: other players' libraries with a state per player, for group features. `getSteamLibrary(id)`: one player's library from Steam only, for viewing one friend. The only writer of `publicLibraries/{steamId}`. |
 | `store.ts` | `SocialStore` and its Firestore implementation, `firestoreSocialStore`. |
 | `deps.ts` | `SocialDeps` (`store`, `client`, `now`), the seams unit tests use to inject fakes. Production code passes nothing. |
 
@@ -15,7 +15,7 @@
 `getFriends` returns `{ friends, message?, source }`. `friends` and `message` are the fields the home page reads (`src/app/page.tsx`); each friend is `{ steamId, personaName, profileUrl, avatarFull, avatarMedium }` plus, when Steam shares them, `status` (Steam's `personastate`, an index into `PERSONA_STATES`) and `currentGame: { appid, name }` (`appid` is null for a non-Steam game). `source` is `friends`, or `pinned` when the friends list is private and the players are the pinned ones.
 
 - **Snapshot.** `users/{id}/meta/friends` holds `{ ids, summaries, state, fetchedAt }`. It is reused for 15 minutes (`FRIENDS_TTL_MS`), then refreshed with one `GetFriendList` call and `ceil(F/100)` `GetPlayerSummaries` calls. Status and current game are therefore up to 15 minutes old. A snapshot dated in the future counts as expired.
-- **Failure.** If a refresh fails, the stale snapshot is served (an old list beats an error); with no snapshot at all, the call throws and the route answers 502. A Firestore read that fails counts as a miss and a write that fails is logged and ignored, so a Firestore problem never takes the friends list down. Concurrent calls for one user share one refresh on an instance.
+- **Failure.** If a refresh fails, the stale snapshot is served (an old list beats an error; for a private list, with the current pinned players, or the pinned ids in the snapshot when they cannot be read); with no snapshot at all, the call throws and the route answers 502. A Firestore read that fails counts as a miss and a write that fails is logged and ignored, so a Firestore problem never takes the friends list down. Concurrent calls for one user share one refresh on an instance.
 - **Messages.** The private-list message keeps its wording from before; an empty list keeps "No Steam friends to suggest yet."; a private list with pins says so (`PINNED_MESSAGE`). The old code told "private" and "private or unavailable" apart; `getFriendList` reports both as private, so there is one message now.
 - **Size.** A snapshot that would pass Firestore's 1 MiB document size or 40,000 index entries (about 2,200 friends) is not written and is refetched on every request instead. Nothing fails.
 - **Deleted accounts** have no summary and are left out, as before.
@@ -45,7 +45,7 @@ Returns one `FriendLibrary` per Steam ID, in the order asked, repeated ids once:
 
 Where a library comes from, in this order:
 
-1. **QIT users** (`source: 'qit'`): a `users/{id}` document exists, its `public` flag is not `false`, and the library index is built. This costs one read for the user and four for the index chunks, and no Steam call. The `public` flag is only what the last sign-in saw; when it says private, Steam is asked instead of trusting an older index.
+1. **QIT users** (`source: 'qit'`): a `users/{id}` document exists, its `public` flag is not `false`, the library index is built, and it was written at most 30 minutes ago (`QIT_INDEX_MAX_AGE_MS`). This costs one read for the user and four for the index chunks, and no Steam call. An older index (or one with no timestamp) is refreshed from Steam through steps 2 and 3 before use. When that refresh finds the library `private`, `not_found` or `error`, the player gets that state and no games, and `users/{id}.public` is set to `false`, so the stored index is not reused until a sign-in sees a public profile again. When `public` already says private, Steam is asked instead of trusting the index.
 2. **The `publicLibraries` cache** (`source: 'steam'`): a document that has not expired.
 3. **Live from Steam** (`source: 'steam'`): `GetPlayerSummaries` (no profile is `not_found`, a non-public profile is `private`), then `GetOwnedGames`. Live fetches are spread by the client's concurrency limit, and concurrent calls for one player share one fetch.
 
@@ -55,17 +55,17 @@ Cache lifetimes: 30 minutes for a library (D10, `PUBLIC_LIBRARY_TTL_MS`), 5 minu
 
 ## `/api/games/friend`
 
-Now reads through `getLibraryFor([id])`, so a QIT friend is answered from the index and a repeat lookup from the 30-minute cache, and each signed-in user gets a burst of 20 lookups and then one every 3 seconds (per instance, like every limiter in the repo). A limited request gets 429 with `Retry-After`. The response is still `{ games: [{ appid, name, img_icon_url, playtime_forever }] }` with plain `{ error }` messages, which `GamesList` reads; only the 429 is new. Status codes are unchanged: 404 not found, 403 private, 502 error.
+Now reads through `getSteamLibrary(id)`: always from Steam, so it follows the player's current Steam privacy setting, and never from another user's stored QIT index. A repeat lookup is served from the 30-minute `publicLibraries` cache, and each signed-in user gets a burst of 20 lookups and then one every 3 seconds (per instance, like every limiter in the repo). A limited request gets 429 with `Retry-After`. The response is still `{ games: [{ appid, name, img_icon_url, playtime_forever }] }` with plain `{ error }` messages, which `GamesList` reads; only the 429 is new. Status codes are unchanged: 404 not found, 403 private, 502 error.
 
 ## Notes for later packages
 
-- Friend Night, the lobby and the dashboard should call `getLibraryFor` and never Steam directly, so the QIT shortcut, the 30-minute cache and the states apply everywhere.
+- Friend Night, the lobby and the dashboard should call `getLibraryFor` and never Steam directly, so the QIT shortcut, the 30-minute cache and the states apply everywhere. Viewing a single friend's library uses `getSteamLibrary`.
 - `getLibraryFor` returns `LibIndexEntry` maps, ready for `group-intersection` and the `Candidate` builders. `r` is kept as Steam sent it: a `0` next to `p > 0` means unknown, and `qit-steam-client.md` records that some accounts never return `rtime_last_played` at all.
 - `getFriends` needs no Steam ID list from the caller. The dashboard can read `currentGame` and `status` from it directly.
 
 ## Tests
 
-- `tests/qit-friends-data.test.ts` (`npm test`): the snapshot, TTL, batching, pinned fallback and partial refresh, stale and failure handling, pinning input forms and limits, `getLibraryFor` states, caching and TTLs, cache encoding and the size guard, using an in-memory `SocialStore` and a fake Steam.
+- `tests/qit-friends-data.test.ts` (`npm test`): the snapshot, TTL, batching, pinned fallback and partial refresh, stale and failure handling (including a stale private snapshot with pins), pinning input forms and limits, `getLibraryFor` states, caching and TTLs, the 30-minute QIT index limit and marking a stale QIT user not public, `getSteamLibrary` ignoring the QIT index, cache encoding and the size guard, using an in-memory `SocialStore` and a fake Steam.
 - `tests/qit-friends-data.routes.test.ts` (`npm test`): the three routes, including authentication, origin check, status mapping and both rate limits.
-- `tests/qit-friends-data.emulator.test.ts` (`npm run test:firestore`, needs Java): the Firestore store: snapshot and pinned documents, pinned edits in transactions, QIT libraries from the real index, an 8,000-game library cached in one document, an oversized library skipped, and a malformed cache document ignored.
+- `tests/qit-friends-data.emulator.test.ts` (`npm run test:firestore`, needs Java): the Firestore store: snapshot and pinned documents, pinned edits in transactions, QIT libraries from the real index, a stale QIT index refreshed and marked not public, an 8,000-game library cached in one document, an oversized library skipped, and a malformed cache document ignored.
 - The friend suggestion tests that used to sit in `tests/routes.test.ts` moved to these files because the route no longer has an in-memory cache to test through `fetch`.

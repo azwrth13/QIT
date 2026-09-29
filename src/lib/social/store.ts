@@ -28,6 +28,8 @@ export interface SocialStore {
   writePublicLibrary(steamId: string, record: PublicLibraryRecord): Promise<void>;
   /** QIT users whose library index is built and whose profile is not known to be private. */
   readQitLibraries(ids: string[]): Promise<Map<string, QitLibrary>>;
+  /** Marks a QIT user's profile as not public, so their stored library index is not reused until they sign in again. */
+  markNotPublic(steamId: string): Promise<void>;
 }
 
 /** Room left under Firestore's limits for the field names and metadata this estimate does not see. */
@@ -125,7 +127,7 @@ export const firestoreSocialStore: SocialStore = {
 
   async readQitLibraries(ids) {
     const users = await getAllInGroups(ids.map(id => db.doc(paths.user(id))));
-    // `public` is only what the last sign-in saw. When it says private, ask Steam instead of trusting an older index.
+    // `public` is what the last sign-in or library refresh saw. When it says private, ask Steam instead of trusting an older index.
     const candidates = ids.filter((_, index) => users[index].exists && users[index].data()?.public !== false);
     const libraries = new Map<string, QitLibrary>();
     await Promise.all(candidates.map(async id => {
@@ -133,5 +135,9 @@ export const firestoreSocialStore: SocialStore = {
       if (index.built) libraries.set(id, { games: index.entries, updatedAt: index.updatedAt?.getTime() ?? null });
     }));
     return libraries;
+  },
+
+  async markNotPublic(steamId) {
+    await db.doc(paths.user(steamId)).update({ public: false });
   },
 };

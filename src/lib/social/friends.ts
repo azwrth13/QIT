@@ -111,7 +111,10 @@ async function refresh(steamId: string, snapshot: FriendsMetaRecord | null, deps
     // Steam is failing or rate limiting: an old snapshot is better than an error.
     if (!snapshot) throw error;
     logServerError('Steam friends refresh failed, serving the last snapshot', error);
-    return toResult(snapshot, snapshot.state === 'private' ? pinned : []);
+    if (snapshot.state === 'private' && pinned.length === 0) {
+      pinned = await bestEffort('Pinned players read failed', () => store.readPinned(steamId), snapshot.ids);
+    }
+    return toResult(snapshot, pinned);
   }
 }
 

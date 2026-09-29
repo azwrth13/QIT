@@ -101,13 +101,26 @@ describe.skipIf(!emulated)('friend libraries (emulator)', () => {
     const world = steam(url => url.pathname.includes('GetPlayerSummaries')
       ? { response: { players: url.searchParams.get('steamids')!.split(',').map(id => summaryOf(id)) } }
       : { response: { game_count: 1, games: [{ appid: 10, name: 'Counter-Strike', playtime_forever: 3 }] } });
-    const [fromIndex, fromSteamHidden, fromSteamUnsynced] = await getLibraryFor([qit, hidden, unsynced], { client: world.client, now: () => NOW });
+    const [fromIndex, fromSteamHidden, fromSteamUnsynced] = await getLibraryFor([qit, hidden, unsynced], { client: world.client });
     expect(fromIndex).toMatchObject({ state: 'ok', source: 'qit' });
     expect([...fromIndex.games.keys()].sort()).toEqual([620, 730]);
     expect(fromSteamHidden).toMatchObject({ state: 'ok', source: 'steam' });
     expect([...fromSteamHidden.games.keys()]).toEqual([10]);
     expect(fromSteamUnsynced.source).toBe('steam');
     expect(world.calls.some(url => url.searchParams.get('steamid') === qit || url.searchParams.get('steamids') === qit)).toBe(false);
+  });
+
+  it('marks a QIT user not public when the refresh of a stale index finds the library private', async () => {
+    const stale = freshUser();
+    await db.doc(paths.user(stale)).set({ steamId: stale, public: true });
+    await patchLibIndex(stale, { 620: { n: 'Portal 2', p: 90 } }, { create: true });
+    const world = steam(url => url.pathname.includes('GetPlayerSummaries')
+      ? { response: { players: [summaryOf(stale, { communityvisibilitystate: 1 })] } }
+      : null);
+    const [library] = await getLibraryFor([stale], { client: world.client, now: () => Date.now() + 31 * 60 * 1000 });
+    expect(library).toMatchObject({ state: 'private', source: 'steam' });
+    expect((await db.doc(paths.user(stale)).get()).data()?.public).toBe(false);
+    expect(await store.readQitLibraries([stale])).toEqual(new Map());
   });
 
   it('caches an 8,000-game Steam library in one document and serves it back without Steam', async () => {

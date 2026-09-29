@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SteamClientError } from '../src/lib/steam/client';
 import type { FriendLibrary } from '../src/lib/social/libraries';
 
-const { getSteamId, getFriends, getLibraryFor, pinPlayer, unpinPlayer } = vi.hoisted(() => ({
-  getSteamId: vi.fn(), getFriends: vi.fn(), getLibraryFor: vi.fn(), pinPlayer: vi.fn(), unpinPlayer: vi.fn(),
+const { getSteamId, getFriends, getSteamLibrary, pinPlayer, unpinPlayer } = vi.hoisted(() => ({
+  getSteamId: vi.fn(), getFriends: vi.fn(), getSteamLibrary: vi.fn(), pinPlayer: vi.fn(), unpinPlayer: vi.fn(),
 }));
 vi.mock('../src/lib/auth', () => ({ getSteamId }));
 vi.mock('../src/lib/social/friends', () => ({ getFriends }));
-vi.mock('../src/lib/social/libraries', () => ({ getLibraryFor }));
+vi.mock('../src/lib/social/libraries', () => ({ getSteamLibrary }));
 vi.mock('../src/lib/social/pinned', async importOriginal => ({ ...await importOriginal<typeof import('../src/lib/social/pinned')>(), pinPlayer, unpinPlayer }));
 vi.mock('../src/lib/base-url', () => ({ getBaseUrl: () => 'https://qit.example' }));
 
@@ -24,7 +24,7 @@ const library = (state: FriendLibrary['state'], games: FriendLibrary['games'] = 
 const friendRequest = (id: string | null = friendId) => new Request(`https://qit.example/api/games/friend${id === null ? '' : `?steamid=${id}`}`);
 
 beforeEach(() => {
-  for (const mock of [getSteamId, getFriends, getLibraryFor, pinPlayer, unpinPlayer]) mock.mockReset();
+  for (const mock of [getSteamId, getFriends, getSteamLibrary, pinPlayer, unpinPlayer]) mock.mockReset();
   getSteamId.mockResolvedValue(me);
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -60,18 +60,18 @@ describe('GET /api/games/friend', () => {
     expect((await friendLibrary(friendRequest())).status).toBe(401);
     expect((await friendLibrary(friendRequest(null))).status).toBe(400);
     expect((await friendLibrary(friendRequest('123'))).status).toBe(400);
-    expect(getLibraryFor).not.toHaveBeenCalled();
+    expect(getSteamLibrary).not.toHaveBeenCalled();
   });
 
   it('returns the games in the shape the library page reads', async () => {
-    getLibraryFor.mockResolvedValue([library('ok', new Map([[620, { n: 'Portal 2', i: 'abc', p: 120 }], [730, { n: 'CS2' }]]))]);
+    getSteamLibrary.mockResolvedValue(library('ok', new Map([[620, { n: 'Portal 2', i: 'abc', p: 120 }], [730, { n: 'CS2' }]])));
     const response = await friendLibrary(friendRequest());
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ games: [
       { appid: 620, name: 'Portal 2', img_icon_url: 'abc', playtime_forever: 120 },
       { appid: 730, name: 'CS2', img_icon_url: '', playtime_forever: 0 },
     ] });
-    expect(getLibraryFor).toHaveBeenCalledWith([friendId]);
+    expect(getSteamLibrary).toHaveBeenCalledWith(friendId);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
   });
 
@@ -80,26 +80,26 @@ describe('GET /api/games/friend', () => {
     ['private', 403, /private/i],
     ['error', 502, /try again/i],
   ] as const)('maps a %s library to %i', async (state, status, message) => {
-    getLibraryFor.mockResolvedValue([library(state)]);
+    getSteamLibrary.mockResolvedValue(library(state));
     const response = await friendLibrary(friendRequest());
     expect(response.status).toBe(status);
     expect((await response.json()).error).toMatch(message);
   });
 
   it('answers 502 when the lookup throws', async () => {
-    getLibraryFor.mockRejectedValue(new Error('boom'));
+    getSteamLibrary.mockRejectedValue(new Error('boom'));
     expect((await friendLibrary(friendRequest())).status).toBe(502);
   });
 
   it('limits each user to a burst of 20 lookups and then one every three seconds', async () => {
     getSteamId.mockResolvedValue('76561198000000077');
-    getLibraryFor.mockResolvedValue([library('ok')]);
+    getSteamLibrary.mockResolvedValue(library('ok'));
     for (let i = 0; i < 20; i++) expect((await friendLibrary(friendRequest())).status).toBe(200);
     const limited = await friendLibrary(friendRequest());
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
     expect(await limited.json()).toEqual({ error: expect.stringMatching(/too many/i) });
-    expect(getLibraryFor).toHaveBeenCalledTimes(20);
+    expect(getSteamLibrary).toHaveBeenCalledTimes(20);
     // Another user is unaffected.
     getSteamId.mockResolvedValue('76561198000000078');
     expect((await friendLibrary(friendRequest())).status).toBe(200);

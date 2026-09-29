@@ -4,7 +4,7 @@ import { createSteamClient } from '../src/lib/steam/client';
 import type { FriendsMetaRecord, LibIndexEntry, PublicLibraryRecord } from '../src/lib/store/types';
 import { NO_FRIENDS_MESSAGE, PINNED_MESSAGE, PRIVATE_LIST_MESSAGE, FRIENDS_TTL_MS, getFriends } from '../src/lib/social/friends';
 import {
-  ERROR_TTL_MS, MAX_LIBRARY_IDS, NEGATIVE_TTL_MS, PUBLIC_LIBRARY_TTL_MS, decodeGames, encodeGames, getLibraryFor,
+  ERROR_TTL_MS, MAX_LIBRARY_IDS, NEGATIVE_TTL_MS, PUBLIC_LIBRARY_TTL_MS, QIT_INDEX_MAX_AGE_MS, decodeGames, encodeGames, getLibraryFor, getSteamLibrary,
 } from '../src/lib/social/libraries';
 import { MAX_PINNED, pinPlayer, unpinPlayer } from '../src/lib/social/pinned';
 import { fitsInDocument, parseFriendsRecord, parsePinnedIds, type QitLibrary, type SocialStore } from '../src/lib/social/store';
@@ -19,6 +19,7 @@ function memoryStore(overrides: Partial<SocialStore> = {}) {
     pinned: new Map<string, string[]>(),
     libraries: new Map<string, PublicLibraryRecord>(),
     qit: new Map<string, QitLibrary>(),
+    notPublic: new Set<string>(),
   };
   const store: SocialStore = {
     readFriends: async id => state.friends.get(id) ?? null,
@@ -33,7 +34,8 @@ function memoryStore(overrides: Partial<SocialStore> = {}) {
     },
     readPublicLibraries: async ids => new Map(ids.flatMap(id => state.libraries.has(id) ? [[id, state.libraries.get(id)!] as const] : [])),
     writePublicLibrary: async (id, record) => { state.libraries.set(id, record); },
-    readQitLibraries: async ids => new Map(ids.flatMap(id => state.qit.has(id) ? [[id, state.qit.get(id)!] as const] : [])),
+    readQitLibraries: async ids => new Map(ids.flatMap(id => state.qit.has(id) && !state.notPublic.has(id) ? [[id, state.qit.get(id)!] as const] : [])),
+    markNotPublic: async id => { state.notPublic.add(id); },
     ...overrides,
   };
   return { store, state };
@@ -251,6 +253,16 @@ describe('friends snapshot', () => {
       expect(result.friends.map(friend => friend.personaName)).toEqual(['Old']);
     });
 
+    it('serves the pinned players from a stale private snapshot if the refresh fails', async () => {
+      const steam = steamWorld({ friendLists: { [owner]: 'fail' } });
+      const { store, state } = memoryStore();
+      state.pinned.set(owner, [friendA]);
+      state.friends.set(owner, { ids: [friendA], summaries: { [friendA]: { name: 'Pinned', url: 'u', avatar: 'a' } }, state: 'private', fetchedAt: Timestamp.fromMillis(NOW - 2 * FRIENDS_TTL_MS) });
+      const result = await getFriends(owner, { store, client: steam.client, now: () => NOW });
+      expect(result).toMatchObject({ source: 'pinned', message: PINNED_MESSAGE });
+      expect(result.friends.map(friend => friend.personaName)).toEqual(['Pinned']);
+    });
+
     it('throws when there is no snapshot to fall back on', async () => {
       const steam = steamWorld({ friendLists: { [owner]: 'fail' } });
       const { store } = memoryStore();
@@ -405,6 +417,44 @@ describe('getLibraryFor', () => {
     // A private profile is not asked for its games; a QIT user costs no Steam call at all.
     expect(steam.calls.some(url => url.searchParams.get('steamid') === privateProfile)).toBe(false);
     expect(steam.calls.some(url => url.searchParams.get('steamid') === qitUser || url.searchParams.get('steamids') === qitUser)).toBe(false);
+  });
+
+  it('refreshes a QIT index older than 30 minutes from Steam', async () => {
+    const steam = world();
+    const { store, state } = memoryStore();
+    state.qit.set(publicUser, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), updatedAt: NOW - QIT_INDEX_MAX_AGE_MS - 1 });
+    const [library] = await getLibraryFor([publicUser], { store, client: steam.client, now: () => NOW });
+    expect(library).toMatchObject({ state: 'ok', source: 'steam' });
+    expect([...library.games.keys()]).toEqual([620, 730]);
+    expect(state.notPublic.has(publicUser)).toBe(false);
+  });
+
+  it.each([
+    ['private', privateGames],
+    ['not_found', missing],
+    ['error', broken],
+  ] as const)('leaves out a stale QIT user whose refresh is %s, and stops reusing their index', async (expected, id) => {
+    const steam = world();
+    const { store, state } = memoryStore();
+    state.qit.set(id, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), updatedAt: NOW - QIT_INDEX_MAX_AGE_MS - 1 });
+    const [library] = await getLibraryFor([id], { store, client: steam.client, now: () => NOW });
+    expect(library).toMatchObject({ state: expected, source: 'steam' });
+    expect(library.games.size).toBe(0);
+    expect(state.notPublic.has(id)).toBe(true);
+    expect(await store.readQitLibraries([id])).toEqual(new Map());
+  });
+
+  it('getSteamLibrary reads from Steam and never from a stored QIT index', async () => {
+    const steam = world();
+    const { store, state } = memoryStore();
+    state.qit.set(privateGames, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), updatedAt: NOW });
+    state.qit.set(publicUser, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), updatedAt: NOW });
+    const deps = { store, client: steam.client, now: () => NOW };
+    expect(await getSteamLibrary(privateGames, deps)).toMatchObject({ state: 'private', source: 'steam' });
+    const library = await getSteamLibrary(publicUser, deps);
+    expect(library).toMatchObject({ state: 'ok', source: 'steam' });
+    expect([...library.games.keys()]).toEqual([620, 730]);
+    await expect(getSteamLibrary('123', deps)).rejects.toThrow('Invalid Steam ID');
   });
 
   it('caches a Steam library for 30 minutes and serves it without calling Steam', async () => {

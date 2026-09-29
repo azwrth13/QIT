@@ -11,6 +11,8 @@ import { bestEffort, resolveDeps, type ResolvedDeps, type SocialDeps } from './d
 // `publicLibraries/{steamId}` for 30 minutes (D10), so a group asking again does not call Steam again.
 // Each player has a state, so one private profile never fails the whole group.
 
+/** How old a QIT user's library index may be before it is refreshed from Steam for a group feature. */
+export const QIT_INDEX_MAX_AGE_MS = 30 * 60 * 1000;
 /** How long a non-QIT library is reused (D10). */
 export const PUBLIC_LIBRARY_TTL_MS = 30 * 60 * 1000;
 /** A private or missing profile is checked again sooner, so a friend who fixes their privacy settings is not stuck. */
@@ -122,10 +124,35 @@ function loadLive(steamId: string, deps: ResolvedDeps): Promise<FriendLibrary> {
   return task;
 }
 
+/** Fills `found` for `ids` from the 30-minute cache, or live from Steam. */
+async function readFromSteam(ids: readonly string[], found: Map<string, FriendLibrary>, deps: ResolvedDeps): Promise<void> {
+  const cached = await bestEffort('Public library cache read failed', () => deps.store.readPublicLibraries([...ids]), new Map<string, PublicLibraryRecord>());
+  for (const id of ids) {
+    const record = cached.get(id);
+    const library = record && record.expiresAt.toMillis() > deps.now() ? fromRecord(id, record) : null;
+    if (library) found.set(id, library);
+  }
+  // The client's own limiter spreads these calls, so asking for all of them at once is fine.
+  await Promise.all(ids.filter(id => !found.has(id)).map(async id => { found.set(id, await loadLive(id, deps)); }));
+}
+
 /**
- * The libraries of the given players, in the order given (repeated ids once). QIT users come from the library
- * index; everyone else comes from the 30-minute cache or live from Steam. A player whose library cannot be read
- * gets a state (`private`, `not_found` or `error`) and no games; the call itself only throws for invalid input.
+ * One player's library from Steam (the 30-minute cache or live), never from a QIT user's stored index, so it follows
+ * the player's current Steam privacy setting. For viewing one friend's library.
+ */
+export async function getSteamLibrary(steamId: string, socialDeps: SocialDeps = {}): Promise<FriendLibrary> {
+  if (!isSteamId(steamId)) throw new Error('Invalid Steam ID');
+  const found = new Map<string, FriendLibrary>();
+  await readFromSteam([steamId], found, resolveDeps(socialDeps));
+  return found.get(steamId) as FriendLibrary;
+}
+
+/**
+ * The libraries of the given players, in the order given (repeated ids once), for group features. A QIT user's
+ * library index is used when it is at most 30 minutes old; an older one is refreshed from Steam, and when Steam
+ * cannot read it the player is marked not public so the index is not reused. Everyone else comes from the 30-minute
+ * cache or live from Steam. A player whose library cannot be read gets a state (`private`, `not_found` or `error`)
+ * and no games; the call itself only throws for invalid input.
  */
 export async function getLibraryFor(ids: readonly string[], socialDeps: SocialDeps = {}): Promise<FriendLibrary[]> {
   const unique = [...new Set(ids)];
@@ -137,18 +164,14 @@ export async function getLibraryFor(ids: readonly string[], socialDeps: SocialDe
 
   const found = new Map<string, FriendLibrary>();
   const qit = await bestEffort('QIT library index read failed', () => store.readQitLibraries(unique), new Map());
-  for (const [steamId, library] of qit) found.set(steamId, { steamId, state: 'ok', source: 'qit', games: library.games, fetchedAt: library.updatedAt });
+  for (const [steamId, library] of qit) {
+    const age = library.updatedAt === null ? Infinity : now() - library.updatedAt;
+    if (age >= 0 && age <= QIT_INDEX_MAX_AGE_MS) found.set(steamId, { steamId, state: 'ok', source: 'qit', games: library.games, fetchedAt: library.updatedAt });
+  }
 
   const others = unique.filter(id => !found.has(id));
-  if (others.length) {
-    const cached = await bestEffort('Public library cache read failed', () => store.readPublicLibraries(others), new Map<string, PublicLibraryRecord>());
-    for (const id of others) {
-      const record = cached.get(id);
-      const library = record && record.expiresAt.toMillis() > now() ? fromRecord(id, record) : null;
-      if (library) found.set(id, library);
-    }
-    // The client's own limiter spreads these calls, so asking for all of them at once is fine.
-    await Promise.all(others.filter(id => !found.has(id)).map(async id => { found.set(id, await loadLive(id, deps)); }));
-  }
+  if (others.length) await readFromSteam(others, found, deps);
+  await Promise.all([...qit.keys()].filter(id => found.get(id)?.state !== 'ok').map(id =>
+    bestEffort('Marking a QIT profile not public failed', () => store.markNotPublic(id), undefined)));
   return unique.map(id => found.get(id) as FriendLibrary);
 }
