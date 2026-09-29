@@ -38,7 +38,7 @@ export const useFetchGames = () => {
         url.searchParams.delete('autosync');
         window.history.replaceState(window.history.state, '', url);
       }
-      const response = await fetch(signedInNow ? '/api/games?autosync=1' : '/api/games');
+      const response = await fetch('/api/games');
       if (response.status === 401) { setUnauthorized(true); setGames([]); return; }
       setUnauthorized(false);
       if (!response.ok) {
@@ -48,7 +48,7 @@ export const useFetchGames = () => {
       const data = await response.json();
       setGames(data.games || []);
       setLastSynced(data.lastSynced || null);
-      if (data.autoSync && !autoSynced.current) {
+      if ((signedInNow || data.autoSync) && !autoSynced.current) {
         autoSynced.current = true;
         void refresh();
       }

@@ -25,7 +25,6 @@ import { POST as genres } from '../src/app/api/games/genres/route';
 import { GET as achievements } from '../src/app/api/games/achievements/route';
 
 const steamId = '76561198000000000';
-const gamesRequest = (query = '') => new Request(`https://qit.example/api/games${query}`);
 const request = (body: string) => new Request('https://qit.example/api/games/genres', { method: 'POST', body });
 
 beforeEach(() => {
@@ -52,7 +51,7 @@ describe('route authentication', () => {
     if (credential === 'unsigned') cookieValues.set('steamid', steamId);
     if (credential === 'forged') cookieValues.set(SESSION_COOKIE, steamId);
     const responses = await Promise.all([
-      games(gamesRequest()), profile(), friend(new Request(`https://qit.example/api/games/friend?steamid=${steamId}`)),
+      games(), profile(), friend(new Request(`https://qit.example/api/games/friend?steamid=${steamId}`)),
       genres(request('{"appids":[10]}')),
     ]);
     expect(responses.map(response => response.status)).toEqual([401, 401, 401, 401]);
@@ -63,7 +62,7 @@ describe('route authentication', () => {
   it('looks up games using the verified session identity', async () => {
     cookieValues.set(SESSION_COOKIE, await createSession(steamId));
     getStoredGames.mockResolvedValue([{ appid: 10 }]);
-    const response = await games(gamesRequest());
+    const response = await games();
     expect(response.status).toBe(200);
     expect(getStoredGames).toHaveBeenCalledWith(steamId);
   });
@@ -71,20 +70,11 @@ describe('route authentication', () => {
 
 describe('post-login auto sync', () => {
   beforeEach(async () => { cookieValues.set(SESSION_COOKIE, await createSession(steamId)); });
-  it('requests a sync of a stored library only when loaded from the sign-in redirect', async () => {
-    getLastSyncedAt.mockResolvedValue('2026-01-01T00:00:00.000Z');
-    getStoredGames.mockResolvedValue([{ appid: 10 }]);
-    const first = await games(gamesRequest('?autosync=1'));
-    expect(await first.json()).toMatchObject({ autoSync: true, lastSynced: '2026-01-01T00:00:00.000Z' });
-    expect(first.headers.get('set-cookie')).toBeNull();
-    const second = await games(gamesRequest());
-    expect(await second.json()).toMatchObject({ autoSync: false });
-  });
   it('requests a sync for a never-synced empty library but not for a synced empty one', async () => {
     getStoredGames.mockResolvedValue([]);
-    expect(await (await games(gamesRequest())).json()).toMatchObject({ autoSync: true, lastSynced: null });
+    expect(await (await games()).json()).toMatchObject({ autoSync: true, lastSynced: null });
     getLastSyncedAt.mockResolvedValue('2026-01-01T00:00:00.000Z');
-    expect(await (await games(gamesRequest())).json()).toMatchObject({ autoSync: false });
+    expect(await (await games()).json()).toMatchObject({ autoSync: false });
   });
 });
 
