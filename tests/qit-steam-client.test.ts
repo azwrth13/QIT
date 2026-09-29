@@ -107,7 +107,6 @@ describe('retry', () => {
     expect(await client.json(url())).toEqual({ ok: 1 });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(sleeps).toEqual([200, 400]); // random 0.5 * 400 * 2^attempt
-    expect(client.stats()).toMatchObject({ requests: 3, retries: 2, keyless: 3, keyed: 0 });
   });
   it('treats timeouts as unavailable and gives up after the retry limit', async () => {
     const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
@@ -133,6 +132,21 @@ describe('retry', () => {
   it('stops retrying when the next wait would pass the deadline', async () => {
     const { client, fetchMock } = harness([new Response('', { status: 429 }), new Response('', { status: 429 })], { deadlineMs: 150 });
     await expect(client.json(url())).rejects.toMatchObject({ kind: 'rate_limited' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it('counts time queued for a concurrency slot against the deadline', async () => {
+    let release!: () => void;
+    const { client, fetchMock, advance } = harness([
+      () => new Promise<Response>(resolve => { release = () => resolve(json({ ok: 1 })); }),
+      json({ ok: 2 }),
+    ], { concurrency: 1, deadlineMs: 1_000 });
+    const first = client.json(url());
+    const queued = client.json(url(), { retries: 0 });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    advance(1_000);
+    release();
+    expect(await first).toEqual({ ok: 1 });
+    await expect(queued).rejects.toMatchObject({ kind: 'unavailable', status: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it('returns accepted non-2xx statuses with parsed or null data', async () => {
@@ -253,7 +267,7 @@ describe('owned games', () => {
       { appid: 10, name: 'Never', playtime_forever: 0, rtime_last_played: 0 },
       { appid: 'bad' },
     ] } })]);
-    const result = await getOwnedGames(steamId, { appids: [620, 10] }, client);
+    const result = await getOwnedGames(steamId, client);
     expect(result).toEqual({ state: 'public', gameCount: 3, games: [
       { appid: 620, name: 'Portal 2', img_icon_url: 'abc', playtime_forever: 600, playtime_2weeks: 30, rtime_last_played: 1700000000, has_community_visible_stats: true },
       { appid: 10, name: 'Never', img_icon_url: '', playtime_forever: 0, playtime_2weeks: 0, rtime_last_played: 0, has_community_visible_stats: false },
@@ -261,16 +275,12 @@ describe('owned games', () => {
     const params = urls[0].searchParams;
     expect(params.get('include_appinfo')).toBe('1');
     expect(params.get('include_played_free_games')).toBe('1');
-    expect(params.get('appids_filter[0]')).toBe('620');
-    expect(params.get('appids_filter[1]')).toBe('10');
   });
   it('distinguishes private from an empty public library', async () => {
-    const { client, urls } = harness([json({ response: {} }), json({ response: { game_count: 0 } })]);
-    expect(await getOwnedGames(steamId, {}, client)).toEqual({ state: 'private' });
-    expect(await getOwnedGames(steamId, { includeAppInfo: false, includePlayedFreeGames: false }, client)).toEqual({ state: 'public', gameCount: 0, games: [] });
-    expect(urls[1].searchParams.get('include_appinfo')).toBe('0');
-    expect(urls[1].searchParams.get('include_played_free_games')).toBe('0');
-    await expect(getOwnedGames('1', {}, client)).rejects.toThrow('Invalid Steam ID');
+    const { client } = harness([json({ response: {} }), json({ response: { game_count: 0 } })]);
+    expect(await getOwnedGames(steamId, client)).toEqual({ state: 'private' });
+    expect(await getOwnedGames(steamId, client)).toEqual({ state: 'public', gameCount: 0, games: [] });
+    await expect(getOwnedGames('1', client)).rejects.toThrow('Invalid Steam ID');
   });
   it('recently played games', async () => {
     const { client, urls } = harness([
@@ -286,8 +296,8 @@ describe('owned games', () => {
   it('a key-block 403 is an error, never a cached private state', async () => {
     const block = () => new Response('<html><head><title>Forbidden</title></head><body>Access is denied.</body></html>', { status: 403 });
     const { client } = harness([block(), new Response('<html>Unauthorized</html>', { status: 401 }), block(), json({}, 403)]);
-    await expect(getOwnedGames(steamId, {}, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
-    await expect(getOwnedGames(steamId, {}, client)).rejects.toMatchObject({ kind: 'unavailable', status: 401 });
+    await expect(getOwnedGames(steamId, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
+    await expect(getOwnedGames(steamId, client)).rejects.toMatchObject({ kind: 'unavailable', status: 401 });
     await expect(getRecentlyPlayedGames(steamId, undefined, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
     expect(await getRecentlyPlayedGames(steamId, undefined, client)).toEqual({ state: 'private' });
   });

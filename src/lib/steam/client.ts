@@ -103,12 +103,12 @@ export function createSteamClient(options: SteamClientOptions = {}) {
   const now = options.now ?? Date.now;
   const budget = options.budget ?? null;
   const semaphore = createSemaphore(config.concurrency);
-  const counters = { requests: 0, retries: 0, keyed: 0, keyless: 0 };
 
-  async function attempt(url: URL, timeoutMs: number) {
+  async function attempt(url: URL, timeoutMs: number, deadline: number) {
     return semaphore.run(async () => {
-      counters.requests++;
-      const response = await fetchImpl(url, { cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
+      const remaining = deadline - now();
+      if (remaining <= 0) throw new SteamClientError('unavailable');
+      const response = await fetchImpl(url, { cache: 'no-store', signal: AbortSignal.timeout(Math.min(timeoutMs, remaining)) });
       const text = await response.text();
       return { response, text };
     });
@@ -118,16 +118,14 @@ export function createSteamClient(options: SteamClientOptions = {}) {
     const keyed = url.searchParams.has('key');
     const accept = requestOptions.accept ?? [];
     const retries = requestOptions.retries ?? config.retries;
-    const startedAt = now();
+    const deadline = now() + config.deadlineMs;
     for (let attemptIndex = 0; ; attemptIndex++) {
-      const remaining = config.deadlineMs - (now() - startedAt);
-      if (remaining <= 0) throw new SteamClientError('unavailable');
+      if (deadline - now() <= 0) throw new SteamClientError('unavailable');
       if (keyed && budget && !(await budget.take())) throw new SteamClientError('budget_exhausted');
-      if (keyed) counters.keyed++; else counters.keyless++;
       let failure: SteamClientError;
       let retryAfterMs: number | null = null;
       try {
-        const { response, text } = await attempt(url, Math.min(requestOptions.timeoutMs ?? config.timeoutMs, remaining));
+        const { response, text } = await attempt(url, requestOptions.timeoutMs ?? config.timeoutMs, deadline);
         const { status } = response;
         if (response.ok || accept.includes(status)) {
           let data: T | null = null;
@@ -152,8 +150,7 @@ export function createSteamClient(options: SteamClientOptions = {}) {
       if (retryAfterMs !== null && retryAfterMs > config.maxRetryAfterMs) throw failure;
       const backoff = random() * Math.min(config.maxDelayMs, config.baseDelayMs * 2 ** attemptIndex);
       const wait = retryAfterMs !== null ? retryAfterMs + random() * config.baseDelayMs : backoff;
-      if (now() - startedAt + wait >= config.deadlineMs) throw failure;
-      counters.retries++;
+      if (now() + wait >= deadline) throw failure;
       await sleep(wait);
     }
   }
@@ -163,11 +160,7 @@ export function createSteamClient(options: SteamClientOptions = {}) {
     return (await request<T>(url, requestOptions)).data as T;
   }
 
-  return {
-    request,
-    json,
-    stats: () => ({ ...counters, active: semaphore.active, waiting: semaphore.waiting }),
-  };
+  return { request, json };
 }
 
 export type SteamClient = ReturnType<typeof createSteamClient>;

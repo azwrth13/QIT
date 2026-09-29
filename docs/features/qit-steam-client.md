@@ -21,7 +21,7 @@ Every wrapper takes an optional last `client` argument; tests pass one built wit
 Defaults are in `STEAM_CLIENT_DEFAULTS`:
 
 - **Concurrency:** 5 requests in flight per client. The shared client is per server instance, so with `maxInstances: 2` up to 10 run at once overall. Waiters run in FIFO order.
-- **Timeout:** 12 s per attempt, including reading the body. There is also a 25 s deadline for the whole call, retries and waits included, which keeps routes well under the 60 s Hosting limit.
+- **Timeout:** 12 s per attempt, including reading the body. There is also a 25 s deadline for the whole call, retries, waits and time queued for a concurrency slot included, which keeps routes well under the 60 s Hosting limit.
 - **Retry:** up to 2 retries on 408, 429, 500, 502, 503, 504 and network or timeout errors. The backoff is full-jitter exponential (400 ms base, 4 s cap). For 429 and 503 the client waits for the `Retry-After` time (seconds or an HTTP date) plus some jitter. If `Retry-After` is longer than 5 s, or a wait would run past the deadline, the call fails at once. The error then carries `retryAfterSeconds` so a route can pass it on.
 - **Accepted statuses:** `request(url, { accept: [403] })` returns `{ status, data }` for those statuses instead of throwing. A 2xx answer whose body is not JSON counts as `unavailable`.
 - **Errors:** every failure is a `SteamClientError`, which extends the existing `SteamApiError`, so current `instanceof` checks and `status` reads still work. `kind` is one of:
@@ -37,7 +37,6 @@ Defaults are in `STEAM_CLIENT_DEFAULTS`:
   Error messages never contain URLs, keys or bodies, and the original network error is dropped because its cause can contain the URL. Log with `logServerError` only.
 
 - **Keyed and keyless:** a keyed URL is one that carries `key`. `steamKeylessUrl` and `steamStoreUrl` never read `STEAM_API_KEY` and refuse a `key` parameter in any letter case. `steamKeyedUrl` / `steamKeylessUrl` accept only `/Interface/Method/vN/` paths, so a caller cannot change the host.
-- `client.stats()` returns request, retry, keyed and keyless counters plus the current `active` and `waiting` counts.
 
 ## Daily budget (optional)
 
@@ -58,7 +57,7 @@ setSteamClient(createSteamClient({
 
 These follow the plan's rule that unknown is its own state and never zero:
 
-- `getOwnedGames`: `{ state: 'private' }`, or `{ state: 'public', gameCount, games }`. Private is only Steam's 200 answer with an empty `response`; any 403 throws, because a bad or blocked key answers with an HTML 403. An empty public library has `game_count: 0` and is public, not private. `include_appinfo=1` and `include_played_free_games=1` are sent by default. `playtime_2weeks` is 0 when Steam leaves it out. `rtime_last_played` is `null` when Steam leaves it out, and a 0 is kept as Steam sent it.
+- `getOwnedGames`: `{ state: 'private' }`, or `{ state: 'public', gameCount, games }`. Private is only Steam's 200 answer with an empty `response`; any 403 throws, because a bad or blocked key answers with an HTML 403. An empty public library has `game_count: 0` and is public, not private. `include_appinfo=1` and `include_played_free_games=1` are always sent. `playtime_2weeks` is 0 when Steam leaves it out. `rtime_last_played` is `null` when Steam leaves it out, and a 0 is kept as Steam sent it.
 - `getPlayerAchievements`: `ok` / `no_stats` / `private`. A 400 or 403 counts as `no_stats` or `private` only when the body is Steam's own `playerstats.success: false`. Any other 4xx body throws, so a key or edge block is not cached as "private".
 - `getRecentlyPlayedGames` and `getFriendList`: a 403 (or, for `getFriendList`, a 401) whose body is not JSON (Steam's key-block page) throws `unavailable`. `getRecentlyPlayedGames` is private on a JSON 403 or a `response` without `total_count`; `getFriendList` is private on a JSON 401, a JSON 403, or a body without `friendslist`.
 - `getCurrentPlayers`: returns `null` when Steam answers 404 with `result: 42` (the app has no counter).

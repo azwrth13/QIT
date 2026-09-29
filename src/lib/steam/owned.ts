@@ -37,26 +37,11 @@ function toOwnedGame(game: RawOwnedGame): OwnedGame | null {
   };
 }
 
-export type OwnedGamesOptions = {
-  includeAppInfo?: boolean;
-  /** Valve: "Free games are excluded by default". */
-  includePlayedFreeGames?: boolean;
-  /** Restricts the answer to these appids. */
-  appids?: number[];
-};
-
-export async function getOwnedGames(steamId: string, options: OwnedGamesOptions = {}, client: SteamClient = getSteamClient()): Promise<OwnedGamesResult> {
+/** Valve excludes free games by default, so `include_played_free_games` is always sent. */
+export async function getOwnedGames(steamId: string, client: SteamClient = getSteamClient()): Promise<OwnedGamesResult> {
   if (!isSteamId(steamId)) throw new Error('Invalid Steam ID');
-  const { includeAppInfo = true, includePlayedFreeGames = true, appids } = options;
-  const params: Record<string, string> = {
-    steamid: steamId, include_appinfo: includeAppInfo ? '1' : '0', include_played_free_games: includePlayedFreeGames ? '1' : '0',
-  };
-  appids?.forEach((appid, index) => {
-    if (!Number.isSafeInteger(appid) || appid <= 0) throw new Error('Invalid app ID');
-    params[`appids_filter[${index}]`] = String(appid);
-  });
   const data = await client.json<{ response?: { game_count?: number; games?: RawOwnedGame[] } }>(
-    steamKeyedUrl('/IPlayerService/GetOwnedGames/v1/', params));
+    steamKeyedUrl('/IPlayerService/GetOwnedGames/v1/', { steamid: steamId, include_appinfo: '1', include_played_free_games: '1' }));
   const response = data?.response;
   // A private profile answers 200 with an empty `response`; a public empty library has game_count 0.
   if (!response || (!Array.isArray(response.games) && response.game_count !== 0)) return { state: 'private' };
