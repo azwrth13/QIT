@@ -7,7 +7,7 @@ import type { FilterSelection, ModeId, Reason, Scope } from '../roulette/types';
 
 /**
  * One game in the compact library index (`users/{id}/libIndex/{libIndexChunkOf(appid)}`, map `games`, keyed by appid).
- * Each field group has one writer: library-model (n, i, p, w, r), app-metadata (f), achievements-data (ap, au, at).
+ * Each field group has one writer: library-model (n, i, p, w, r, s), app-metadata (f), achievements-data (ap, au, at).
  */
 export interface LibIndexEntry {
   /** name */
@@ -18,8 +18,10 @@ export interface LibIndexEntry {
   p?: number;
   /** playtime_2weeks, minutes */
   w?: number;
-  /** rtime_last_played, Unix seconds (0 with p > 0 means unknown) */
+  /** rtime_last_played, Unix seconds: 0 means never played; absent means unknown (library-model never stores 0 with p > 0) */
   r?: number;
+  /** has_community_visible_stats: 1 or 0 */
+  s?: number;
   /** store flag bits */
   f?: number;
   /** achievement percent unlocked */

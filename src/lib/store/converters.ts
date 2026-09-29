@@ -17,7 +17,7 @@ export function recordConverter<T extends DocumentData>(): FirestoreDataConverte
 }
 
 const STRING_FIELDS = ['n', 'i'] as const;
-const NUMBER_FIELDS = ['p', 'w', 'r', 'f', 'ap', 'au', 'at'] as const;
+const NUMBER_FIELDS = ['p', 'w', 'r', 's', 'f', 'ap', 'au', 'at'] as const;
 export const LIB_INDEX_FIELDS: ReadonlyArray<keyof LibIndexEntry> = [...STRING_FIELDS, ...NUMBER_FIELDS];
 
 /** Returns a clean entry, or null when the raw value has no name (not a usable entry). Malformed fields are dropped as unknown. */

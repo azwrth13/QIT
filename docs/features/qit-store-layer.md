@@ -17,7 +17,7 @@
 
 | Field | Meaning | Writer |
 |---|---|---|
-| `n`, `i`, `p`, `w`, `r` | name, icon hash, playtime_forever, playtime_2weeks (minutes), rtime_last_played (Unix seconds) | library-model |
+| `n`, `i`, `p`, `w`, `r`, `s` | name, icon hash, playtime_forever, playtime_2weeks (minutes), rtime_last_played (Unix seconds), has_community_visible_stats (1 or 0) | library-model |
 | `f` | store flag bits | app-metadata |
 | `ap`, `au`, `at` | achievement percent, unlocked, total | achievements-data |
 
