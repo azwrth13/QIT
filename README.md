@@ -8,7 +8,7 @@ Use Node.js 22.13 or newer. Run `npm ci`, then copy `.env.example` to `.env.loca
 
 Install the Firebase CLI and Java, run `firebase emulators:start --only firestore`, then run `npm run dev` in a second terminal. `.env.local` sets `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080`; the Admin SDK connects to the emulator without a service account. To use a real Firestore database in local development, unset that variable and point `GOOGLE_APPLICATION_CREDENTIALS` at a local service account JSON file. Never commit that file or credentials.
 
-Your Steam Game details must be Public for QIT to sync owned games. Firestore stores profiles under `users/{steamid}`, owned games under `users/{steamid}/games/{appid}`, achievement progress under `users/{steamid}/achievementProgress/{appid}`, and shared genre data under `apps/{appid}`. Existing Railway data is not migrated; users and libraries are rebuilt from Steam at the next sign-in. The public library view reads live from Steam and does not store games.
+Your Steam Game details must be Public for QIT to sync owned games. Firestore stores profiles under `users/{steamid}`, owned games under `users/{steamid}/games/{appid}` and a compact library index under `users/{steamid}/libIndex/{0..3}`, achievement progress under `users/{steamid}/achievementProgress/{appid}`, and shared genre data under `apps/{appid}`. Existing Railway data is not migrated; users and libraries are rebuilt from Steam at the next sign-in. The public library view reads live from Steam and does not store games.
 
 Sessions use signed and encrypted HTTP-only cookies for seven days. Existing unsigned Steam ID cookies are not accepted, and rotating `SESSION_SECRET` invalidates current sessions. Logout clears the session cookie.
 
