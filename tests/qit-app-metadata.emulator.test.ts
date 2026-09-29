@@ -56,9 +56,9 @@ describe.skipIf(!emulated)('app metadata against the Firestore emulator', () => 
     expect(entries.get(b)).toEqual({ n: 'B', p: 0, f: 0 });
     expect(entries.has(gone)).toBe(false);
 
-    // Nothing left to do for A; only the unknown app is rechecked, from the negative cache, without a Steam call.
+    // Nothing left to do for A; the unknown app is rechecked from the negative cache, without a Steam call or an index write.
     getStoreItems.mockClear();
-    expect(await enrichLibraryFlags(steamId)).toMatchObject({ requested: 1, fetched: 0, patched: 1, unresolved: 0 });
+    expect(await enrichLibraryFlags(steamId)).toMatchObject({ requested: 1, fetched: 0, patched: 0, unresolved: 0 });
     expect(getStoreItems).not.toHaveBeenCalled();
   });
 

@@ -272,8 +272,10 @@ export async function enrichLibraryFlags(steamId: string, options: AppMetaOption
   const { meta, unresolved, fetched } = await getAppMeta(needed, options);
   const patches = new Map<number, { f: number }>();
   for (const [appid, app] of meta) {
-    // An expired copy is still better than no flags, but an unknown one must not overwrite flags already known.
-    if (app.state === 'unknown' && isKnown(index.entries.get(appid)?.f)) continue;
+    // An expired copy is still better than no flags, but unknown flags must not overwrite flags already known,
+    // and an entry that already holds these flags needs no write.
+    const current = index.entries.get(appid)?.f;
+    if (app.flags === current || (!isKnown(app.flags) && isKnown(current))) continue;
     patches.set(appid, { f: app.flags });
   }
   const { applied } = await patchLibIndex(steamId, patches);

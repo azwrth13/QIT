@@ -209,7 +209,7 @@ describe('enrichLibraryFlags', () => {
   const entries = (list: Array<[number, number | undefined]>) =>
     new Map(list.map(([appid, f]) => [appid, { n: `App ${appid}`, ...(f === undefined ? {} : { f }) }]));
 
-  it('patches f only for entries without known flags, with 0 for unknown apps', async () => {
+  it('patches f only for entries without known flags, with 0 for unknown apps, skipping settled ones', async () => {
     const known = encodeStoreFlags(item(2));
     readLibIndex.mockResolvedValue({ entries: entries([[1, undefined], [2, known], [3, undefined], [4, 0]]), built: true, updatedAt: null });
     getStoreItems.mockResolvedValue(answer([item(1, { player: [1, 36], feature: [] }), 3, 4]));
@@ -218,10 +218,10 @@ describe('enrichLibraryFlags', () => {
     const result = await enrichLibraryFlags('76561198000000042', { now: NOW });
     expect(getStoreItems.mock.calls[0][0]).toEqual([1, 3, 4]);
     const patches = patchLibIndex.mock.calls[0][1] as Map<number, { f: number }>;
-    expect([...patches.keys()]).toEqual([1, 3, 4]);
+    expect([...patches.keys()]).toEqual([1, 3]);
     expect(storeFlag(patches.get(1)!.f, 'pvp')).toBe(true);
     expect(patches.get(3)).toEqual({ f: 0 });
-    expect(result).toEqual({ requested: 3, fetched: 3, patched: 3, unresolved: 0, coverage: 0.5 });
+    expect(result).toEqual({ requested: 3, fetched: 3, patched: 2, unresolved: 0, coverage: 0.5 });
   });
 
   it('does not touch the index when Steam is unreachable, and reports coverage', async () => {
@@ -237,6 +237,15 @@ describe('enrichLibraryFlags', () => {
     const known = encodeStoreFlags(item(1));
     readLibIndex.mockResolvedValue({ entries: entries([[1, known]]), built: true, updatedAt: null });
     getStoreItems.mockResolvedValue(answer([1].map(() => 1)));
+    patchLibIndex.mockResolvedValue({ applied: [], skipped: [] });
+    await enrichLibraryFlags('76561198000000042', { now: NOW, force: true });
+    expect([...(patchLibIndex.mock.calls[0][1] as Map<number, unknown>).keys()]).toEqual([]);
+  });
+
+  it('never overwrites known flags with an ok answer that has no category data when forced', async () => {
+    const known = encodeStoreFlags(item(1));
+    readLibIndex.mockResolvedValue({ entries: entries([[1, known]]), built: true, updatedAt: null });
+    getStoreItems.mockResolvedValue(answer([item(1, { player: [], feature: [] })]));
     patchLibIndex.mockResolvedValue({ applied: [], skipped: [] });
     await enrichLibraryFlags('76561198000000042', { now: NOW, force: true });
     expect([...(patchLibIndex.mock.calls[0][1] as Map<number, unknown>).keys()]).toEqual([]);
