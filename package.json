@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint . --ext .js,.mjs,.ts,.mts,.tsx --ignore-pattern .next --ignore-pattern next-env.d.ts --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run tests/client-ip.test.ts tests/routes.test.ts tests/security.test.ts && node --experimental-strip-types --test tests/library.test.mjs",
+    "test": "vitest run tests/client-ip.test.ts tests/routes.test.ts tests/security.test.ts tests/qit-route-guards.test.ts && node --experimental-strip-types --test tests/library.test.mjs",
     "test:firestore": "firebase emulators:exec --only firestore 'npx vitest run tests/firestore.test.ts'"
   },
   "dependencies": {
