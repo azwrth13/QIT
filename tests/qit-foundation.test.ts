@@ -80,7 +80,7 @@ describe('nav items', () => {
 });
 
 describe('with param', () => {
-  it('parses comma lists and repeated params, dropping invalid, duplicate and own ids', () => {
+  it('parses comma lists and repeated params, dropping invalid and duplicate ids', () => {
     expect(parseWithParam(`${id(1)},${id(2)}`)).toEqual([id(1), id(2)]);
     expect(parseWithParam([`${id(1)}`, ` ${id(2)} ,${id(1)}`])).toEqual([id(1), id(2)]);
     expect(parseWithParam(`123,${id(3)},abc,,${id(4)}x`)).toEqual([id(3)]);
