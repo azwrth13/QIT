@@ -12,12 +12,15 @@ const ctx: ScoreContext & FilterContext = { now: 1_790_000_000, thresholds: THRE
 const id = (n: number) => `7656119800000${String(n).padStart(4, '0')}`;
 
 describe('roulette registries', () => {
-  it('resolve all 20 mode and filter ids to stubs', () => {
+  it('resolve all 20 mode and filter ids, with unimplemented ones as stubs', () => {
     expect(MODE_IDS.length + FILTER_IDS.length).toBe(20);
+    // Modes whose owning package has replaced the stub; each has its own tests.
+    const implementedModes: readonly string[] = ['pure-random'];
     for (const modeId of MODE_IDS) {
       const mode = getMode(modeId);
-      expect(mode).toMatchObject({ id: modeId, stub: true });
+      expect(mode).toMatchObject({ id: modeId, stub: !implementedModes.includes(modeId) });
       expect(mode.requires).toContain('library');
+      if (!mode.stub) continue;
       expect(() => mode.score(candidate, ctx)).toThrow(StubNotImplementedError);
     }
     for (const filterId of FILTER_IDS) {
