@@ -7,7 +7,7 @@ import type { DailyBudget } from './budget';
  * budget for calls that carry the API key. Errors never carry URLs, keys or payloads.
  */
 
-export type SteamErrorKind = 'private' | 'not_found' | 'invalid' | 'rate_limited' | 'unavailable' | 'budget_exhausted';
+export type SteamErrorKind = 'private' | 'not_found' | 'rate_limited' | 'unavailable' | 'budget_exhausted';
 
 export class SteamClientError extends SteamApiError {
   readonly kind: SteamErrorKind;
@@ -25,8 +25,7 @@ export function classifySteamStatus(status: number): SteamErrorKind {
   if (status === 401 || status === 403) return 'private';
   if (status === 404) return 'not_found';
   if (status === 429) return 'rate_limited';
-  if (status === 408 || status >= 500 || status === 0) return 'unavailable';
-  return 'invalid';
+  return 'unavailable';
 }
 
 const RETRY_STATUSES = new Set([408, 429, 500, 502, 503, 504]);

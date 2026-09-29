@@ -163,10 +163,8 @@ async function keylessChecks() {
     const players = await get('/ISteamUserStats/GetNumberOfCurrentPlayers/v1/', { appid: id }, { keyed: false });
     out(`- GetNumberOfCurrentPlayers ${id}: ${shape(players)}; response keys: ${Object.keys(players.body?.response ?? {}).join(', ')}; result: ${players.body?.response?.result}`);
   }
-  for (const method of ['GetGamesByConcurrentPlayers', 'GetMostPlayedGames']) {
-    const chart = await get(`/ISteamChartsService/${method}/v1/`, {}, { keyed: false });
-    out(`- ${method}: ${shape(chart)}; response keys: ${Object.keys(chart.body?.response ?? {}).join(', ')}; ranks ${chart.body?.response?.ranks?.length ?? 0}; rank keys: ${Object.keys(chart.body?.response?.ranks?.[0] ?? {}).join(', ')}`);
-  }
+  const chart = await get('/ISteamChartsService/GetGamesByConcurrentPlayers/v1/', {}, { keyed: false });
+  out(`- GetGamesByConcurrentPlayers: ${shape(chart)}; response keys: ${Object.keys(chart.body?.response ?? {}).join(', ')}; ranks ${chart.body?.response?.ranks?.length ?? 0}; rank keys: ${Object.keys(chart.body?.response?.ranks?.[0] ?? {}).join(', ')}`);
   const input = { ids: [620, 431960, 323180, 228980].map(id => ({ appid: id })), context: { language: 'english', country_code: 'US' },
     data_request: { include_assets: true, include_release: true, include_tag_count: 20, include_reviews: true } };
   const items = await get('/IStoreBrowseService/GetItems/v1/', { input_json: JSON.stringify(input) }, { keyed: false });
@@ -175,8 +173,6 @@ async function keylessChecks() {
   out(`  - item keys: ${keysOf(storeItems)}`);
   const big = { ...input, ids: Array.from({ length: 100 }, (_, i) => ({ appid: 10 + i * 10 })) };
   out(`- GetItems with 100 ids: ${shape(await get('/IStoreBrowseService/GetItems/v1/', { input_json: JSON.stringify(big) }, { keyed: false }))}`);
-  const tags = await get('/IStoreService/GetTagList/v1/', { language: 'english' }, { keyed: false });
-  out(`- GetTagList: ${shape(tags)}; tags ${tags.body?.response?.tags?.length ?? 0}`);
   const one = await get('/api/appdetails', { appids: '620', cc: 'us' }, { keyed: false, origin: 'https://store.steampowered.com' });
   out(`- appdetails 620: ${shape(one)}; success ${one.body?.['620']?.success}; has genres ${Array.isArray(one.body?.['620']?.data?.genres)}; has categories ${Array.isArray(one.body?.['620']?.data?.categories)}`);
   out(`- appdetails 620,730: ${shape(await get('/api/appdetails', { appids: '620,730', cc: 'us' }, { keyed: false, origin: 'https://store.steampowered.com' }))}`);

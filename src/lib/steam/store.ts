@@ -1,18 +1,10 @@
 import { getSteamClient, type SteamClient } from './client';
 import { steamKeylessUrl, steamStoreUrl } from './urls';
 
-/** Store metadata: batched `IStoreBrowseService/GetItems`, single-app `appdetails` and tag names (all keyless). */
+/** Store metadata: batched `IStoreBrowseService/GetItems` and single-app `appdetails` (both keyless). */
 
 /** 250 ids worked and 300 failed with 414 (the limit is URL length), so 100 leaves a wide margin. */
 export const STORE_ITEMS_BATCH = 100;
-
-/** `GetItems` `type` codes observed on 2026-09-28 (620 game, 431960/365670/1840 software, 323180 soundtrack). */
-export const STORE_ITEM_TYPE = { game: 0, software: 6, music: 11 } as const;
-
-/** Category ids seen in `categories.*_categoryids` (same ids as `appdetails` categories). */
-export const STORE_CATEGORY = {
-  multiPlayer: 1, singlePlayer: 2, coOp: 9, achievements: 22, onlineCoOp: 38, sharedSplitScreenCoOp: 39,
-} as const;
 
 export type StoreItem = {
   appid: number;
@@ -26,7 +18,7 @@ export type StoreItem = {
   /** Unix seconds. */
   releaseDate: number | null;
   reviews: { review_count: number; percent_positive: number; review_score: number; review_score_label: string } | null;
-  /** `asset_url_format` plus file names; resolve with `steamStoreAssetUrl`. */
+  /** `asset_url_format` plus file names, as Steam sends them. */
   assets: Record<string, string | number> | null;
   parentAppid: number | null;
 };
@@ -104,12 +96,4 @@ export async function getAppDetails<T = Record<string, unknown>>(appid: number, 
   const data = await client.json<Record<string, { success?: boolean; data?: T }>>(steamStoreUrl('/api/appdetails', params));
   const entry = data?.[String(appid)];
   return entry?.success === true && entry.data ? entry.data : null;
-}
-
-/** Tag id to name list for `GetItems` `tagids`. */
-export async function getTagList(language = 'english', client: SteamClient = getSteamClient()): Promise<Array<{ tagid: number; name: string }>> {
-  const data = await client.json<{ response?: { tags?: Array<{ tagid?: number; name?: string }> } }>(
-    steamKeylessUrl('/IStoreService/GetTagList/v1/', { language }));
-  return (data?.response?.tags ?? []).flatMap(tag =>
-    Number.isSafeInteger(tag?.tagid) && typeof tag.name === 'string' ? [{ tagid: tag.tagid as number, name: tag.name }] : []);
 }

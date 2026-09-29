@@ -6,13 +6,13 @@
 |---|---|
 | `client.ts` | `createSteamClient`, the shared `getSteamClient()` / `setSteamClient()`, `SteamClientError`, `classifySteamStatus`, `parseRetryAfter`, `createSemaphore` |
 | `budget.ts` | optional daily budget for keyed calls: `createDailyBudget`, `memoryBudgetStore`, `firestoreBudgetStore` |
-| `urls.ts` | `steamKeyedUrl`, `steamKeylessUrl`, `steamStoreUrl`, art URLs (`steamHeaderImageUrl`, `steamLibraryCapsuleUrl`, `steamIconUrl`, `steamStoreAssetUrl`) |
+| `urls.ts` | `steamKeyedUrl`, `steamKeylessUrl`, `steamStoreUrl`, art URLs (`steamHeaderImageUrl`, `steamLibraryCapsuleUrl`, and `steamIconUrl` as the fallback) |
 | `owned.ts` | `getOwnedGames`, `getRecentlyPlayedGames` (keyed) |
 | `players.ts` | `getPlayerSummaries` (batches of 100), `getFriendList`, `resolveVanityUrl` (keyed) |
 | `achievements.ts` | `getPlayerAchievements`, `getSchemaForGame` (keyed) |
 | `rarity.ts` | `getGlobalAchievementPercentages` (keyless) |
-| `charts.ts` | `getCurrentPlayers`, `getGamesByConcurrentPlayers`, `getMostPlayedGames` (keyless) |
-| `store.ts` | `getStoreItems` (batched `GetItems`, 100 ids per call), `getAppDetails`, `getTagList` (keyless) |
+| `charts.ts` | `getCurrentPlayers`, `getGamesByConcurrentPlayers` (keyless) |
+| `store.ts` | `getStoreItems` (batched `GetItems`, 100 ids per call), `getAppDetails` (keyless) |
 
 Every wrapper takes an optional last `client` argument; tests pass one built with `createSteamClient({ fetch, sleep, now, random })`.
 
@@ -28,11 +28,10 @@ Defaults are in `STEAM_CLIENT_DEFAULTS`:
 
 | kind | when |
 |---|---|
-| `private` | 401 or 403 (hidden profile, games or friends list; a bad key also ends up here) |
+| `private` | 401 or 403 (hidden profile, games or friends list; a bad key is also an HTML 403, so wrappers never turn a thrown `private` into a cached private state) |
 | `not_found` | 404 |
 | `rate_limited` | 429 after the retries run out, or a `Retry-After` that is too long |
-| `unavailable` | 5xx, 408, network error, timeout, deadline reached, or a 2xx that is not JSON |
-| `invalid` | any other 4xx |
+| `unavailable` | 5xx, 408, any other 4xx, network error, timeout, deadline reached, or a 2xx that is not JSON |
 | `budget_exhausted` | the daily key budget is used up; Steam was not called |
 
   Error messages never contain URLs, keys or bodies, and the original network error is dropped because its cause can contain the URL. Log with `logServerError` only.
@@ -59,8 +58,9 @@ setSteamClient(createSteamClient({
 
 These follow the plan's rule that unknown is its own state and never zero:
 
-- `getOwnedGames`: `{ state: 'private' }`, or `{ state: 'public', gameCount, games }`. An empty public library has `game_count: 0` and is public, not private. `include_played_free_games` is on by default. `playtime_2weeks` is 0 when Steam leaves it out. `rtime_last_played` is `null` when Steam leaves it out, and a 0 is kept as Steam sent it.
+- `getOwnedGames`: `{ state: 'private' }`, or `{ state: 'public', gameCount, games }`. Private is only Steam's 200 answer with an empty `response`; any 403 throws, because a bad or blocked key answers with an HTML 403. An empty public library has `game_count: 0` and is public, not private. `include_appinfo=1` and `include_played_free_games=1` are sent by default. `playtime_2weeks` is 0 when Steam leaves it out. `rtime_last_played` is `null` when Steam leaves it out, and a 0 is kept as Steam sent it.
 - `getPlayerAchievements`: `ok` / `no_stats` / `private`. A 400 or 403 counts as `no_stats` or `private` only when the body is Steam's own `playerstats.success: false`. Any other 4xx body throws, so a key or edge block is not cached as "private".
+- `getRecentlyPlayedGames` and `getFriendList`: a 403 whose body is not JSON (Steam's key-block page) throws. `getRecentlyPlayedGames` is private on a JSON 403 or a `response` without `total_count`; `getFriendList` is private on a 401, a JSON 403, or a body without `friendslist`.
 - `getCurrentPlayers`: returns `null` when Steam answers 404 with `result: 42` (the app has no counter).
 - `getGlobalAchievementPercentages`: returns `null` on `403 {}` (the app has no stats). Steam sends each percent as a string, and it is parsed to a number.
 - `getStoreItems`: returns a `Map` holding every requested appid. The value is `null` when Steam reports `success: 15` (hidden or delisted app). Items are matched by `id`, because hidden apps come back with `appid: 0`.
@@ -84,11 +84,35 @@ They match report section 3; nothing needs correcting.
 
 - `GetGlobalAchievementPercentagesForApp` 620: HTTP 200, 51 achievements, `percent` is a string. App 7: HTTP 403, body `{}`.
 - `GetNumberOfCurrentPlayers` 730: HTTP 200, `{player_count, result: 1}`. App 1: HTTP 404, `{result: 42}`.
-- `GetGamesByConcurrentPlayers`: HTTP 200, `last_update` plus 100 ranks of `rank, appid, concurrent_in_game, peak_in_game`. `GetMostPlayedGames`: HTTP 200, `rollup_date` plus 100 ranks of `rank, appid, last_week_rank, peak_in_game`.
+- `GetGamesByConcurrentPlayers`: HTTP 200, `last_update` plus 100 ranks of `rank, appid, concurrent_in_game, peak_in_game`.
 - `GetItems` with 620, 431960, 323180 and 228980: `success/type` values were 1/0 (game), 1/6 (software), 1/11 (soundtrack, `related_items.parent_appid` 620) and 15/none, where the hidden app comes back with `appid: 0`. A batch of 100 ids returned HTTP 200. Item keys seen: `item_type, id, success, visible, name, store_url_path, store_url_slug, appid, type, tagids, categories, reviews, tags, assets, release, best_purchase_option, is_free, related_items`.
-- `GetTagList`: HTTP 200, 446 tags. `appdetails` 620: HTTP 200 with `genres` and `categories`. `appdetails` 620,730: HTTP 400.
-- Calling the wrappers themselves (through the shared client, with no key in the environment) parsed all of the above. There were 9 requests, all keyless, and 0 retries.
+- `appdetails` 620: HTTP 200 with `genres` and `categories`. `appdetails` 620,730: HTTP 400, non-JSON.
+- Calling the wrappers themselves (through the shared client, with no key in the environment) parsed all of the above, all keyless, with 0 retries.
+- The keyless results were re-run on 2026-09-29 together with the keyed run below and were unchanged.
 
-### Keyed checklist (A.3 items 1 to 7): pending
+### Keyed checklist (A.3 items 1 to 7), 2026-09-29
 
-These checks were not run. The key exists only in the Firebase secret store, and this package was built without access to it. Until someone runs them, the fields the report marks "unverified" stay unverified: `rtime_last_played`, the "total playtime private" behavior, the `l=english` achievement fields, schema icons and hidden descriptions, the summary fields for friends-only profiles, the private-profile shape of `GetRecentlyPlayedGames`, and the status code for a private friends list. The wrappers already accept each documented variant (field present or missing, 401 or 403). Whoever runs the keyed command above should paste its output here and correct report section 3 if any field differs.
+The key was read from the Firebase secret store straight into the environment of the one `node scripts/steam-live-check.mjs` command; it was not printed, logged or saved. No test-account Steam IDs (`QIT_CHECK_*`) were supplied for this run, and no other people's profiles were looked up, so every check that needs an account was skipped. Those items stay unverified, and the wrappers keep accepting each documented variant (field present or missing, 401 or 403) until someone runs them with supplied test accounts.
+
+| Item | Result |
+|---|---|
+| 1. `GetOwnedGames` fields and never-played games | skipped: no public test account supplied |
+| 2. `GetOwnedGames` with "total playtime private" | skipped: no hidden-playtime test account supplied |
+| 3. `GetPlayerAchievements` fields, 400 and 403 shapes | skipped: no public or private test account supplied |
+| 4. `GetSchemaForGame` with `l=english` | run, see below |
+| 5. `GetPlayerSummaries` public vs friends-only | skipped: no public or friends-only test account supplied |
+| 6. `GetRecentlyPlayedGames` shape and private 403 | skipped: no public or private test account supplied |
+| 7. `GetFriendList` for a private list | skipped: no private-friends-list test account supplied |
+
+Item 4, `GetSchemaForGame` (no account needed):
+
+- App 620: HTTP 200, `game` has `gameName, gameVersion, availableGameStats`; 51 achievements, each with `name, defaultvalue, displayName, hidden, description, icon, icongray`; none hidden; every `icon` is an absolute `https://` URL.
+- App 1245620 (has hidden achievements): 42 achievements, 36 hidden. `description` is present on 6 of 42, and none of the hidden ones has it. Hidden achievements omit the field entirely rather than sending a blank string. `icon` and `icongray` are present and absolute on all 42.
+- App 7 (no stats): HTTP 200 with `game: {}`, not an error, so `getSchemaForGame` returns an empty list.
+
+Bad key (checked with a made-up key, no account): HTTP 403, `text/html`, body starting "Forbidden ... Access is denied. Retrying will not help. Please verify your key= parameter". This confirmed that a 403 alone cannot mean "private". `getOwnedGames` now throws on any 403, and `getRecentlyPlayedGames` and `getFriendList` throw on a non-JSON 403.
+
+Corrections to the plan's Steam API table from this run:
+
+- `GetSchemaForGame`: an app without stats answers HTTP 200 with an empty `game` object, not an error status. Hidden achievements have no `description` field at all.
+- Keyed endpoints: a wrong or blocked key answers with an HTML 403, the same status the plan lists for private data. A 403 therefore counts as private only when it carries a JSON body from Steam, never from the status alone.

@@ -8,7 +8,6 @@ import { isSteamId, steamApiUrl } from '../steam';
 const API_ORIGIN = 'https://api.steampowered.com';
 const STORE_ORIGIN = 'https://store.steampowered.com';
 const CDN_ORIGIN = 'https://cdn.cloudflare.steamstatic.com';
-const STORE_ASSET_ORIGIN = 'https://shared.steamstatic.com/store_item_assets/';
 const API_PATH = /^\/[A-Za-z]+\/[A-Za-z]+\/v\d+\/$/;
 
 function assertApiPath(path: string) {
@@ -57,10 +56,4 @@ export function steamIconUrl(appid: number, iconHash: string): string | null {
   assertAppId(appid);
   if (!/^[0-9a-f]{40}$/.test(iconHash)) return null;
   return `https://media.steampowered.com/steamcommunity/public/images/apps/${appid}/${iconHash}.jpg`;
-}
-
-/** Resolves a `GetItems` asset (`assets.asset_url_format` plus a file such as `assets.header`). */
-export function steamStoreAssetUrl(assetUrlFormat: string, file: string): string | null {
-  if (!/^steam\/apps\/\d+\/\$\{FILENAME\}(\?t=\d+)?$/.test(assetUrlFormat) || !/^([0-9a-f]{40}\/)?[\w.-]+\.(jpg|png)$/.test(file)) return null;
-  return STORE_ASSET_ORIGIN + assetUrlFormat.replace('${FILENAME}', file);
 }

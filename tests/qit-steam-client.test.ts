@@ -6,14 +6,14 @@ import {
 } from '../src/lib/steam/client';
 import { createDailyBudget, firestoreBudgetStore, memoryBudgetStore, utcDay, type BudgetStore } from '../src/lib/steam/budget';
 import {
-  steamHeaderImageUrl, steamIconUrl, steamKeyedUrl, steamKeylessUrl, steamLibraryCapsuleUrl, steamStoreAssetUrl, steamStoreUrl,
+  steamHeaderImageUrl, steamIconUrl, steamKeyedUrl, steamKeylessUrl, steamLibraryCapsuleUrl, steamStoreUrl,
 } from '../src/lib/steam/urls';
 import { getOwnedGames, getRecentlyPlayedGames } from '../src/lib/steam/owned';
 import { getFriendList, getPlayerSummaries, resolveVanityUrl } from '../src/lib/steam/players';
 import { getPlayerAchievements, getSchemaForGame } from '../src/lib/steam/achievements';
 import { getGlobalAchievementPercentages } from '../src/lib/steam/rarity';
-import { getCurrentPlayers, getGamesByConcurrentPlayers, getMostPlayedGames } from '../src/lib/steam/charts';
-import { getAppDetails, getStoreItems, getTagList, STORE_ITEMS_BATCH } from '../src/lib/steam/store';
+import { getCurrentPlayers, getGamesByConcurrentPlayers } from '../src/lib/steam/charts';
+import { getAppDetails, getStoreItems, STORE_ITEMS_BATCH } from '../src/lib/steam/store';
 
 const steamId = '76561198000000000';
 const KEY = 'test-key-do-not-leak';
@@ -75,10 +75,6 @@ describe('URL builders', () => {
     expect(steamIconUrl(620, '25a5a16b2423bf7487ac5340b5b0948cef48c5f8'))
       .toBe('https://media.steampowered.com/steamcommunity/public/images/apps/620/25a5a16b2423bf7487ac5340b5b0948cef48c5f8.jpg');
     expect(steamIconUrl(620, '../x')).toBeNull();
-    expect(steamStoreAssetUrl('steam/apps/620/${FILENAME}?t=1790187113', 'faffc0f560786e2f05104a8d2fac837c6969bf13/header.jpg'))
-      .toBe('https://shared.steamstatic.com/store_item_assets/steam/apps/620/faffc0f560786e2f05104a8d2fac837c6969bf13/header.jpg?t=1790187113');
-    expect(steamStoreAssetUrl('//evil.test/${FILENAME}', 'header.jpg')).toBeNull();
-    expect(steamStoreAssetUrl('steam/apps/620/${FILENAME}', '../header.jpg')).toBeNull();
     expect(() => steamHeaderImageUrl(0)).toThrow('Invalid app ID');
   });
 });
@@ -86,7 +82,7 @@ describe('URL builders', () => {
 describe('error taxonomy and Retry-After', () => {
   it('classifies statuses', () => {
     expect([401, 403, 404, 429, 400, 414, 408, 500, 503, 0].map(classifySteamStatus)).toEqual(
-      ['private', 'private', 'not_found', 'rate_limited', 'invalid', 'invalid', 'unavailable', 'unavailable', 'unavailable', 'unavailable']);
+      ['private', 'private', 'not_found', 'rate_limited', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable']);
   });
   it('parses delta seconds and HTTP dates', () => {
     expect(parseRetryAfter('3')).toBe(3000);
@@ -121,7 +117,7 @@ describe('retry', () => {
   });
   it('does not retry client errors', async () => {
     const { client, fetchMock } = harness([new Response('', { status: 400 })]);
-    await expect(client.json(url())).rejects.toMatchObject({ kind: 'invalid', status: 400 });
+    await expect(client.json(url())).rejects.toMatchObject({ kind: 'unavailable', status: 400 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it('honors Retry-After on 429', async () => {
@@ -263,16 +259,17 @@ describe('owned games', () => {
       { appid: 10, name: 'Never', img_icon_url: '', playtime_forever: 0, playtime_2weeks: 0, rtime_last_played: 0, has_community_visible_stats: false },
     ] });
     const params = urls[0].searchParams;
-    expect(params.get('include_appinfo')).toBe('true');
-    expect(params.get('include_played_free_games')).toBe('true');
+    expect(params.get('include_appinfo')).toBe('1');
+    expect(params.get('include_played_free_games')).toBe('1');
     expect(params.get('appids_filter[0]')).toBe('620');
     expect(params.get('appids_filter[1]')).toBe('10');
   });
   it('distinguishes private from an empty public library', async () => {
-    const { client } = harness([json({ response: {} }), json({ response: { game_count: 0 } }), json({}, 403)]);
+    const { client, urls } = harness([json({ response: {} }), json({ response: { game_count: 0 } })]);
     expect(await getOwnedGames(steamId, {}, client)).toEqual({ state: 'private' });
-    expect(await getOwnedGames(steamId, {}, client)).toEqual({ state: 'public', gameCount: 0, games: [] });
-    expect(await getOwnedGames(steamId, {}, client)).toEqual({ state: 'private' });
+    expect(await getOwnedGames(steamId, { includeAppInfo: false, includePlayedFreeGames: false }, client)).toEqual({ state: 'public', gameCount: 0, games: [] });
+    expect(urls[1].searchParams.get('include_appinfo')).toBe('0');
+    expect(urls[1].searchParams.get('include_played_free_games')).toBe('0');
     await expect(getOwnedGames('1', {}, client)).rejects.toThrow('Invalid Steam ID');
   });
   it('recently played games', async () => {
@@ -284,6 +281,13 @@ describe('owned games', () => {
       { appid: 620, name: 'Portal 2', img_icon_url: 'abc', playtime_2weeks: 30, playtime_forever: 600 },
     ] });
     expect(urls[0].searchParams.get('count')).toBe('5');
+    expect(await getRecentlyPlayedGames(steamId, undefined, client)).toEqual({ state: 'private' });
+  });
+  it('a key-block 403 is an error, never a cached private state', async () => {
+    const block = () => new Response('<html><head><title>Forbidden</title></head><body>Access is denied.</body></html>', { status: 403 });
+    const { client } = harness([block(), block(), json({}, 403)]);
+    await expect(getOwnedGames(steamId, {}, client)).rejects.toMatchObject({ status: 403 });
+    await expect(getRecentlyPlayedGames(steamId, undefined, client)).rejects.toMatchObject({ status: 403 });
     expect(await getRecentlyPlayedGames(steamId, undefined, client)).toEqual({ state: 'private' });
   });
 });
@@ -298,13 +302,15 @@ describe('players', () => {
     expect(urls.map(url => url.searchParams.get('steamids')!.split(',').length)).toEqual([100, 100, 50]);
     expect(summaries.get(ids[5])).toMatchObject({ personastate: 1 });
   });
-  it('friend list: 401, 403 and a missing list are private', async () => {
+  it('friend list: 401, a JSON 403 and a missing list are private; an HTML 403 throws', async () => {
     const { client } = harness([
       json({ friendslist: { friends: [{ steamid: '76561198000000001', friend_since: 5 }, { steamid: '76561198000000001' }, { steamid: 'x' }] } }),
       new Response('<html>Unauthorized</html>', { status: 401 }), json({}, 403), json({}),
+      new Response('<html>Forbidden</html>', { status: 403 }),
     ]);
     expect(await getFriendList(steamId, client)).toEqual({ state: 'public', friends: [{ steamid: '76561198000000001', friend_since: 5 }] });
     for (let i = 0; i < 3; i++) expect(await getFriendList(steamId, client)).toEqual({ state: 'private' });
+    await expect(getFriendList(steamId, client)).rejects.toMatchObject({ status: 403 });
   });
   it('resolves vanity names', async () => {
     const { client, urls } = harness([json({ response: { success: 1, steamid: steamId } }), json({ response: { success: 42, message: 'No match' } })]);
@@ -377,10 +383,8 @@ describe('keyless endpoints', () => {
   it('charts', async () => {
     const { client } = harness([
       json({ response: { last_update: 10, ranks: [{ rank: 1, appid: 730, concurrent_in_game: 5, peak_in_game: 9 }, { rank: 2 }] } }),
-      json({ response: { rollup_date: 20, ranks: [{ rank: 1, appid: 570, last_week_rank: 2, peak_in_game: 8 }] } }),
     ]);
     expect(await getGamesByConcurrentPlayers(client)).toEqual({ lastUpdate: 10, ranks: [{ rank: 1, appid: 730, concurrent_in_game: 5, peak_in_game: 9 }] });
-    expect(await getMostPlayedGames(client)).toEqual({ rollupDate: 20, ranks: [{ rank: 1, appid: 570, last_week_rank: 2, peak_in_game: 8 }] });
   });
   it('store items: batches of 100, matched by id, delisted apps are null', async () => {
     const appids = Array.from({ length: 250 }, (_, i) => i + 1);
@@ -408,17 +412,15 @@ describe('keyless endpoints', () => {
     });
     await expect(getStoreItems([0], {}, client)).rejects.toThrow('Invalid app ID');
   });
-  it('appdetails and tag list', async () => {
+  it('appdetails', async () => {
     const { client, urls } = harness([
       json({ 620: { success: true, data: { name: 'Portal 2', genres: [{ description: 'Action' }] } } }),
       json({ 1: { success: false } }),
-      json({ response: { version_hash: '1', tags: [{ tagid: 19, name: 'Action' }, { tagid: 'x' }] } }),
     ]);
     expect(await getAppDetails(620, { filters: 'genres' }, client)).toEqual({ name: 'Portal 2', genres: [{ description: 'Action' }] });
     expect(urls[0].origin).toBe('https://store.steampowered.com');
     expect(Object.fromEntries(urls[0].searchParams)).toEqual({ appids: '620', cc: 'us', filters: 'genres' });
     expect(await getAppDetails(1, {}, client)).toBeNull();
-    expect(await getTagList('english', client)).toEqual([{ tagid: 19, name: 'Action' }]);
   });
 });
 

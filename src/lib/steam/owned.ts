@@ -1,5 +1,5 @@
 import { isSteamId } from '../steam';
-import { getSteamClient, type SteamClient } from './client';
+import { classifySteamStatus, getSteamClient, SteamClientError, type SteamClient } from './client';
 import { steamKeyedUrl } from './urls';
 
 /** `IPlayerService/GetOwnedGames` and `GetRecentlyPlayedGames` (keyed; target's Game details must be public). */
@@ -49,14 +49,14 @@ export async function getOwnedGames(steamId: string, options: OwnedGamesOptions 
   if (!isSteamId(steamId)) throw new Error('Invalid Steam ID');
   const { includeAppInfo = true, includePlayedFreeGames = true, appids } = options;
   const params: Record<string, string> = {
-    steamid: steamId, include_appinfo: String(includeAppInfo), include_played_free_games: String(includePlayedFreeGames),
+    steamid: steamId, include_appinfo: includeAppInfo ? '1' : '0', include_played_free_games: includePlayedFreeGames ? '1' : '0',
   };
   appids?.forEach((appid, index) => {
     if (!Number.isSafeInteger(appid) || appid <= 0) throw new Error('Invalid app ID');
     params[`appids_filter[${index}]`] = String(appid);
   });
-  const { data } = await client.request<{ response?: { game_count?: number; games?: RawOwnedGame[] } }>(
-    steamKeyedUrl('/IPlayerService/GetOwnedGames/v1/', params), { accept: [403] });
+  const data = await client.json<{ response?: { game_count?: number; games?: RawOwnedGame[] } }>(
+    steamKeyedUrl('/IPlayerService/GetOwnedGames/v1/', params));
   const response = data?.response;
   // A private profile answers 200 with an empty `response`; a public empty library has game_count 0.
   if (!response || (!Array.isArray(response.games) && response.game_count !== 0)) return { state: 'private' };
@@ -71,8 +71,9 @@ export async function getRecentlyPlayedGames(steamId: string, limit?: number, cl
   if (!isSteamId(steamId)) throw new Error('Invalid Steam ID');
   const params: Record<string, string> = { steamid: steamId };
   if (limit !== undefined) params.count = String(Math.max(1, Math.floor(limit)));
-  const { data } = await client.request<{ response?: { total_count?: number; games?: RawOwnedGame[] } }>(
+  const { status, data } = await client.request<{ response?: { total_count?: number; games?: RawOwnedGame[] } }>(
     steamKeyedUrl('/IPlayerService/GetRecentlyPlayedGames/v1/', params), { accept: [403] });
+  if (status === 403 && data === null) throw new SteamClientError(classifySteamStatus(status), status);
   const response = data?.response;
   if (!response || typeof response.total_count !== 'number') return { state: 'private' };
   const games = (response.games ?? []).map(toOwnedGame).filter((game): game is OwnedGame => game !== null)

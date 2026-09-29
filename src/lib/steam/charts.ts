@@ -1,7 +1,7 @@
 import { getSteamClient, type SteamClient } from './client';
 import { steamKeylessUrl } from './urls';
 
-/** Live player counts and the top-100 charts (all keyless, limited per IP). */
+/** Live player counts and the top-100 concurrent-players chart (keyless, limited per IP). */
 
 /** Current players, or null when the app has no counter (Steam answers 404 with `result: 42`). Null means unknown, never 0. */
 export async function getCurrentPlayers(appid: number, client: SteamClient = getSteamClient()): Promise<number | null> {
@@ -13,7 +13,6 @@ export async function getCurrentPlayers(appid: number, client: SteamClient = get
 }
 
 export type ConcurrencyRank = { rank: number; appid: number; concurrent_in_game: number; peak_in_game: number };
-export type MostPlayedRank = { rank: number; appid: number; last_week_rank: number; peak_in_game: number };
 
 const isRank = <T extends { rank?: number; appid?: number }>(rank: T | null | undefined): rank is T & { rank: number; appid: number } =>
   typeof rank?.rank === 'number' && typeof rank.appid === 'number' && Number.isSafeInteger(rank.appid) && rank.appid > 0;
@@ -25,17 +24,6 @@ export async function getGamesByConcurrentPlayers(client: SteamClient = getSteam
     lastUpdate: typeof data?.response?.last_update === 'number' ? data.response.last_update : null,
     ranks: (data?.response?.ranks ?? []).filter(isRank).map(rank => ({
       rank: rank.rank, appid: rank.appid, concurrent_in_game: rank.concurrent_in_game ?? 0, peak_in_game: rank.peak_in_game ?? 0,
-    })),
-  };
-}
-
-export async function getMostPlayedGames(client: SteamClient = getSteamClient()): Promise<{ rollupDate: number | null; ranks: MostPlayedRank[] }> {
-  const data = await client.json<{ response?: { rollup_date?: number; ranks?: Array<Partial<MostPlayedRank>> } }>(
-    steamKeylessUrl('/ISteamChartsService/GetMostPlayedGames/v1/'));
-  return {
-    rollupDate: typeof data?.response?.rollup_date === 'number' ? data.response.rollup_date : null,
-    ranks: (data?.response?.ranks ?? []).filter(isRank).map(rank => ({
-      rank: rank.rank, appid: rank.appid, last_week_rank: rank.last_week_rank ?? 0, peak_in_game: rank.peak_in_game ?? 0,
     })),
   };
 }
