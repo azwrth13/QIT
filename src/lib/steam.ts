@@ -84,7 +84,7 @@ export function isSteamIdOrProfileUrl(input: string): boolean {
   return /^\d+$/.test(cleaned) || /^(http|www\.|steamcommunity|s\.team|steam\.me)/.test(cleaned) || cleaned.includes('/');
 }
 
-import type { Game } from './games';
+import { lastPlayedAt, type Game } from './games';
 
 export interface SteamProfile {
   steamId: string;
@@ -112,11 +112,16 @@ export async function getSteamProfile(steamId: string): Promise<SteamProfile | n
 
 export async function getSteamGames(steamId: string): Promise<Game[] | null> {
   if (!isSteamId(steamId)) return null;
-  const data = await steamJson<{ response: { game_count?: number; games?: Game[] } }>(steamApiUrl('/IPlayerService/GetOwnedGames/v1/', { steamid: steamId, include_appinfo: 'true' }));
+  // Valve leaves free games out unless asked, even ones the player has played.
+  const data = await steamJson<{ response: { game_count?: number; games?: Array<Game & { rtime_last_played?: number }> } }>(steamApiUrl(
+    '/IPlayerService/GetOwnedGames/v1/', { steamid: steamId, include_appinfo: 'true', include_played_free_games: 'true' }));
   if (!data.response?.games) return data.response?.game_count === 0 ? [] : null;
   return data.response.games.map(game => ({
     appid: game.appid, name: game.name, img_icon_url: game.img_icon_url || '',
     playtime_forever: game.playtime_forever || 0,
+    playtime_2weeks: game.playtime_2weeks || 0,
+    rtime_last_played: lastPlayedAt(game.rtime_last_played, game.playtime_forever || 0),
+    has_community_visible_stats: game.has_community_visible_stats === true,
   }));
 }
 

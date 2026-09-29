@@ -3,7 +3,23 @@ export interface Game {
   name: string;
   img_icon_url?: string;
   playtime_forever?: number;
+  /** Minutes played in the last two weeks. Steam leaves the field out when it is 0. */
+  playtime_2weeks?: number;
+  /** Unix seconds. 0 means never played; null means unknown (Steam left it out, or sent 0 for a played game). */
+  rtime_last_played?: number | null;
+  has_community_visible_stats?: boolean;
   genres?: string[];
+}
+
+/**
+ * Normalizes Steam's `rtime_last_played`. Steam leaves it out for some accounts entirely, and sends 0 both for
+ * never-played games and for games last played too long ago to be recorded, so 0 only means "never" when the
+ * game has no playtime either.
+ */
+export function lastPlayedAt(rtime: unknown, playtimeForever = 0): number | null {
+  if (typeof rtime !== 'number' || !Number.isFinite(rtime) || rtime < 0) return null;
+  if (rtime > 0) return Math.floor(rtime);
+  return playtimeForever > 0 ? null : 0;
 }
 
 export interface LibraryStats {

@@ -17,7 +17,7 @@ beforeAll(() => {
 });
 afterAll(() => { vi.unstubAllGlobals(); });
 
-it('syncs insert, update, and delete, and shares the genre cache between libraries', async () => {
+it('syncs insert, update, and delete, keeps genres off the library load, and shares the genre cache between libraries', async () => {
   let games = [
     { appid: 100001, name: 'First', playtime_forever: 5 },
     { appid: 100002, name: 'Second', playtime_forever: 10 },
@@ -35,13 +35,14 @@ it('syncs insert, update, and delete, and shares the genre cache between librari
 
   const first = await syncLibrary(steamId, profile);
   expect(first?.games).toHaveLength(2);
-  expect(first?.games[0].genres).toEqual([]);
+  expect(first?.games[0].genres).toBeUndefined();
+  expect((await getStoredGames(steamId))[0].genres).toBeUndefined();
   expect(storeCalls).toBe(0);
-  expect((await getStoredGames(steamId))[0].genres).toEqual(['Action']);
   expect((await getStoredProfile(steamId))?.personaName).toBe('Test player');
-  expect(storeCalls).toBe(2);
   expect(await ownsGames(steamId, [100001, 100002])).toBe(true);
   expect(await ownsGames(steamId, [100001, 100003])).toBe(false);
+  expect(await getGenresForApps([100001, 100002])).toEqual({ 100001: ['Action'], 100002: ['Action'] });
+  expect(storeCalls).toBe(2);
 
   games = [
     { appid: 100001, name: 'First renamed', playtime_forever: 25 },
@@ -49,13 +50,12 @@ it('syncs insert, update, and delete, and shares the genre cache between librari
   ];
   const second = await syncLibrary(steamId, profile);
   expect(second?.lastSynced).toBeTruthy();
-  expect(second?.games.find(game => game.appid === 100001)?.genres).toEqual(['Action']);
   expect(storeCalls).toBe(2);
   expect((await getStoredGames(steamId)).map(game => game.appid).sort()).toEqual([100001, 100003]);
   expect((await db.doc(`users/${steamId}/games/100001`).get()).data()?.name).toBe('First renamed');
   expect((await db.doc(`users/${steamId}/games/100002`).get()).exists).toBe(false);
   expect(await getGenresForApps([100001])).toEqual({ 100001: ['Action'] });
-  expect(storeCalls).toBe(3);
+  expect(storeCalls).toBe(2);
 });
 
 it('caches Steam no-stats and private achievement responses but not other failures', async () => {
