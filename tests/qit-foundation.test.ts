@@ -12,7 +12,7 @@ const ctx: ScoreContext & FilterContext = { now: 1_790_000_000, thresholds: THRE
 const id = (n: number) => `7656119800000${String(n).padStart(4, '0')}`;
 
 describe('roulette registries', () => {
-  it('resolve all 20 mode and filter ids, with unimplemented ones as stubs', () => {
+  it('resolve all 20 mode and filter ids, with unimplemented modes as stubs', () => {
     expect(MODE_IDS.length + FILTER_IDS.length).toBe(20);
     // Modes whose owning package has replaced the stub; each has its own tests.
     const implementedModes: readonly string[] = ['pure-random'];
@@ -23,12 +23,11 @@ describe('roulette registries', () => {
       if (!mode.stub) continue;
       expect(() => mode.score(candidate, ctx)).toThrow(StubNotImplementedError);
     }
+    // Every filter belongs to qit-filter-engine and is implemented; see tests/qit-filter-engine.test.ts.
     for (const filterId of FILTER_IDS) {
       const filter = getFilter(filterId);
-      expect(filter).toMatchObject({ id: filterId, stub: true });
+      expect(filter).toMatchObject({ id: filterId, stub: false });
       expect(filter.requires.length).toBeGreaterThan(0);
-      expect(filter.parse({})).toBeNull();
-      expect(() => filter.test(candidate, {}, ctx)).toThrow(StubNotImplementedError);
     }
   });
 
