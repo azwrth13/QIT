@@ -13,7 +13,7 @@
 
 ## Library index
 
-`users/{steamId}/libIndex/{appid % 4}` with one field, `games`, a map keyed by appid, plus `updatedAt` (server timestamp). Entry fields, each with one writer:
+`users/{steamId}/libIndex/{libIndexChunkOf(appid)}` with one field, `games`, a map keyed by appid, plus `updatedAt` (server timestamp). Entry fields, each with one writer:
 
 | Field | Meaning | Writer |
 |---|---|---|
@@ -31,18 +31,22 @@ Readers skip entries without a name, so a partial entry can never surface as a g
 
 ### Index exemption
 
-`firestore.indexes.json` exempts `games` on the `libIndex` collection group from single-field indexing (`"indexes": []`). Firebase documents that a map field's subfields inherit its exemption ("If you create an index exemption for a map field, the map's subfields inherit those settings", Index types page). Without it, each entry field gets ascending and descending entries: the 8,000-game test library would need about 80,000 entries in one chunk, twice the 40,000 per-document limit, so large writes would fail. **Deploy it before library-model writes the first chunk**: `firebase deploy --only firestore:indexes`. There are no composite indexes, by design, because the emulator cannot catch a missing one.
+`firestore.indexes.json` exempts `games` on the `libIndex` collection group from single-field indexing (`"indexes": []`). Firebase documents that a map field's subfields inherit its exemption ("If you create an index exemption for a map field, the map's subfields inherit those settings", Index types page). Without it, each entry field gets ascending and descending entries: each game costs about 20 index entries, so a chunk would reach the 40,000 per-document limit at about 2,000 games (roughly an 8,000-game library) and larger writes would fail. **Deploy it before library-model writes the first chunk**: `firebase deploy --only firestore:indexes`. There are no composite indexes, by design, because the emulator cannot catch a missing one.
+
+### Chunking
+
+`libIndexChunkOf(appid)` picks the chunk, and every reader and writer goes through it. It is a multiplicative (Fibonacci) hash of the appid keeping the top two bits. Plain `appid % 4` would not do: about 95% of Steam appids are multiples of 10, which land only in chunks 0 and 2. The hash spreads any stride of appids (1, 10, 20, 40, 100) within one percentage point of 25% per chunk. Changing the function moves every entry, so it is fixed once library-model writes real data.
 
 ### Size check (synthetic 8,000-game library, every field populated)
 
 | Chunk | Games | Size | Index entries with exemption / without |
 |---|---|---|---|
-| 0 | 3,828 | 627,981 B (59.9% of 1 MiB) | 2 / 76,564 |
-| 1 | 103 | 17,026 B (1.6%) | 2 / 2,064 |
-| 2 | 3,988 | 655,234 B (62.5%) | 2 / 79,764 |
-| 3 | 81 | 13,518 B (1.3%) | 2 / 1,624 |
+| 0 | 1,973 | 324,018 B (30.9% of 1 MiB) | 2 / 39,464 |
+| 1 | 1,990 | 326,007 B (31.1%) | 2 / 39,804 |
+| 2 | 2,010 | 329,934 B (31.5%) | 2 / 40,204 |
+| 3 | 2,027 | 333,800 B (31.8%) | 2 / 40,544 |
 
-The test models real Steam appids, about 95% of which are multiples of 10, with names of 8 to 64 characters. Because of that, `appid % 4` is uneven: multiples of 10 land only in chunks 0 and 2. Two chunks carry almost the whole library, at about 164 bytes per game, so the ceiling is roughly 12,000 to 13,000 games before a chunk reaches 1 MiB, not the 25,000 an even split would allow. 8,000 games fit with about 37% headroom per chunk. If more headroom is needed, `(appid / 10) % 4` or a hash spreads the entries evenly. The chunk function is `libIndexChunkOf`, and changing it costs nothing only until library-model has written real data.
+The test models real Steam appids, about 95% of which are multiples of 10, with names of 8 to 64 characters, at about 164 bytes per game. Each chunk could hold about 6,370 games before reaching 1 MiB, so the ceiling is roughly 25,000 games, and 8,000 games use under a third of each chunk. The test also asserts that without the exemption the index-entry limit, at about 2,000 games per chunk, would cap the library well before the size limit.
 
 ## Tests
 

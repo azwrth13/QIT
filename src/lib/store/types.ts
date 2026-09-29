@@ -5,7 +5,7 @@ import type { Timestamp } from 'firebase-admin/firestore';
 // optional field means "unknown", never zero. Owning packages may tighten these as they land.
 
 /**
- * One game in the compact library index (`users/{id}/libIndex/{appid % 4}`, map `games`, keyed by appid).
+ * One game in the compact library index (`users/{id}/libIndex/{libIndexChunkOf(appid)}`, map `games`, keyed by appid).
  * Each field group has one writer: library-model (n, i, p, w, r), app-metadata (f), achievements-data (ap, au, at).
  */
 export interface LibIndexEntry {

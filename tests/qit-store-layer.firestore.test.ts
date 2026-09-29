@@ -1,7 +1,7 @@
 import { DocumentReference, Query, Transaction } from 'firebase-admin/firestore';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../src/lib/firestore';
-import { patchLibIndex, readLibIndex, removeFromLibIndex, type LibIndexPatch } from '../src/lib/store/lib-index';
+import { libIndexChunkOf, patchLibIndex, readLibIndex, removeFromLibIndex, type LibIndexPatch } from '../src/lib/store/lib-index';
 import { MAX_DOCUMENT_BYTES, MAX_INDEX_ENTRIES, documentSize, estimateIndexEntries } from '../src/lib/store/limits';
 import { paths } from '../src/lib/store/paths';
 
@@ -43,7 +43,7 @@ function random(seed: number) {
   };
 }
 
-/** Realistic shape: almost every Steam appid is a multiple of 10, so chunks 1 and 3 stay small. Every field is populated. */
+/** Realistic shape: almost every Steam appid is a multiple of 10. Every field is populated. */
 function syntheticLibrary(size: number): Map<number, LibIndexPatch> {
   const rand = random(8000);
   const library = new Map<number, LibIndexPatch>();
@@ -79,12 +79,18 @@ describe.skipIf(!emulated)('library index (emulator)', () => {
       const bytes = documentSize(path, data);
       const exempt = estimateIndexEntries(data, ['games']);
       const unexempt = estimateIndexEntries(data);
+      // Games a chunk could hold before reaching 1 MiB, and before reaching 40,000 index entries without the exemption.
+      const bySize = Math.floor(MAX_DOCUMENT_BYTES / (bytes / count));
+      const byUnexemptIndex = Math.floor(MAX_INDEX_ENTRIES / (unexempt / count));
       report.push(`chunk ${chunk}: ${count} games, ${bytes} bytes (${(bytes / MAX_DOCUMENT_BYTES * 100).toFixed(1)}% of 1 MiB), ` +
-        `${exempt} index entries with the exemption, ${unexempt} without`);
+        `${exempt} index entries with the exemption, ${unexempt} without; ceiling ${bySize} games by size, ${byUnexemptIndex} unexempt`);
       games += count;
+      expect(count / library.size).toBeGreaterThan(0.23);
+      expect(count / library.size).toBeLessThan(0.27);
       expect(bytes).toBeLessThan(MAX_DOCUMENT_BYTES);
       expect(exempt).toBeLessThanOrEqual(MAX_INDEX_ENTRIES);
-      if (count > 1000) expect(unexempt).toBeGreaterThan(MAX_INDEX_ENTRIES);
+      // Without the exemption the index-entry limit, not the size limit, would cap the library.
+      expect(byUnexemptIndex).toBeLessThan(bySize / 2);
     }
     console.info(report.join('\n'));
     expect(games).toBe(8000);
@@ -128,7 +134,7 @@ describe.skipIf(!emulated)('library index (emulator)', () => {
     const { entries } = await readLibIndex(steamId);
     expect([...entries.keys()].sort()).toEqual([620, 621]);
     expect(entries.get(620)).toEqual({ n: 'Portal 2', p: 10, f: 2 });
-    expect((await db.doc(paths.libIndexChunk(steamId, 0)).get()).data()?.games).not.toHaveProperty('400');
+    expect((await db.doc(paths.libIndexChunk(steamId, libIndexChunkOf(400))).get()).data()?.games).not.toHaveProperty('400');
   });
 
   it('reports an index that was never built, and leaves it unbuilt after no-op writes', async () => {

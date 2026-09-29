@@ -31,16 +31,24 @@ describe('paths', () => {
 });
 
 describe('library index planning', () => {
-  it('chunks by appid % 4', () => {
+  it('spreads realistic appids evenly over the four chunks', () => {
     expect(LIB_INDEX_CHUNKS).toBe(4);
-    expect([620, 621, 622, 623].map(libIndexChunkOf)).toEqual([0, 1, 2, 3]);
+    expect(libIndexChunkOf('620')).toBe(libIndexChunkOf(620));
+    expect(() => libIndexChunkOf(0)).toThrow('Invalid app ID');
+    // Steam appids are almost all multiples of 10; check that stride and coarser ones.
+    for (const step of [1, 10, 20, 40, 100]) {
+      const counts = [0, 0, 0, 0];
+      for (let appid = step; appid <= step * 40_000; appid += step) counts[libIndexChunkOf(appid)]++;
+      for (const count of counts) expect(Math.abs(count / 40_000 - 0.25)).toBeLessThan(0.01);
+    }
   });
 
   it('groups patches by chunk, maps null to a field delete, and drops empty patches', () => {
-    const plan = planLibIndexPatch({ 620: { p: 10, ap: null }, 621: { w: undefined }, 624: { n: 'Other' } }, false);
-    expect([...plan.keys()]).toEqual([0]);
-    expect(plan.get(0)!.get(620)).toEqual({ p: 10, ap: FieldValue.delete() });
-    expect(plan.get(0)!.get(624)).toEqual({ n: 'Other' });
+    const plan = planLibIndexPatch({ 620: { p: 10, ap: null }, 621: { w: undefined }, 570: { n: 'Other' } }, false);
+    expect([...plan.keys()].sort()).toEqual([libIndexChunkOf(620), libIndexChunkOf(570)].sort());
+    expect(plan.get(libIndexChunkOf(620))!.get(620)).toEqual({ p: 10, ap: FieldValue.delete() });
+    expect(plan.get(libIndexChunkOf(570))!.get(570)).toEqual({ n: 'Other' });
+    expect([...plan.values()].some(entries => entries.has(621))).toBe(false);
   });
 
   it('rejects unknown fields, bad values, and creates without a name', () => {
