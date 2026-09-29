@@ -28,10 +28,10 @@ Defaults are in `STEAM_CLIENT_DEFAULTS`:
 
 | kind | when |
 |---|---|
-| `private` | 401 or 403 (hidden profile, games or friends list; a bad key is also an HTML 403, so wrappers never turn a thrown `private` into a cached private state) |
+| `private` | 401 (Steam's answer for a private friends list). A 403 is never thrown as `private`, because a bad or blocked key is also a 403; wrappers return a private state only after checking Steam's JSON body |
 | `not_found` | 404 |
 | `rate_limited` | 429 after the retries run out, or a `Retry-After` that is too long |
-| `unavailable` | 5xx, 408, any other 4xx, network error, timeout, deadline reached, or a 2xx that is not JSON |
+| `unavailable` | 5xx, 408, 403, any other 4xx, network error, timeout, deadline reached, or a 2xx that is not JSON |
 | `budget_exhausted` | the daily key budget is used up; Steam was not called |
 
   Error messages never contain URLs, keys or bodies, and the original network error is dropped because its cause can contain the URL. Log with `logServerError` only.
@@ -60,9 +60,9 @@ These follow the plan's rule that unknown is its own state and never zero:
 
 - `getOwnedGames`: `{ state: 'private' }`, or `{ state: 'public', gameCount, games }`. Private is only Steam's 200 answer with an empty `response`; any 403 throws, because a bad or blocked key answers with an HTML 403. An empty public library has `game_count: 0` and is public, not private. `include_appinfo=1` and `include_played_free_games=1` are sent by default. `playtime_2weeks` is 0 when Steam leaves it out. `rtime_last_played` is `null` when Steam leaves it out, and a 0 is kept as Steam sent it.
 - `getPlayerAchievements`: `ok` / `no_stats` / `private`. A 400 or 403 counts as `no_stats` or `private` only when the body is Steam's own `playerstats.success: false`. Any other 4xx body throws, so a key or edge block is not cached as "private".
-- `getRecentlyPlayedGames` and `getFriendList`: a 403 whose body is not JSON (Steam's key-block page) throws. `getRecentlyPlayedGames` is private on a JSON 403 or a `response` without `total_count`; `getFriendList` is private on a 401, a JSON 403, or a body without `friendslist`.
+- `getRecentlyPlayedGames` and `getFriendList`: a 403 whose body is not JSON (Steam's key-block page) throws `unavailable`. `getRecentlyPlayedGames` is private on a JSON 403 or a `response` without `total_count`; `getFriendList` is private on a 401, a JSON 403, or a body without `friendslist`.
 - `getCurrentPlayers`: returns `null` when Steam answers 404 with `result: 42` (the app has no counter).
-- `getGlobalAchievementPercentages`: returns `null` on `403 {}` (the app has no stats). Steam sends each percent as a string, and it is parsed to a number.
+- `getGlobalAchievementPercentages`: returns `null` on `403 {}` (the app has no stats). A 403 whose body is not JSON (an IP or edge block) throws `unavailable`. Steam sends each percent as a string, and it is parsed to a number.
 - `getStoreItems`: returns a `Map` holding every requested appid. The value is `null` when Steam reports `success: 15` (hidden or delisted app). Items are matched by `id`, because hidden apps come back with `appid: 0`.
 
 ## Live verification
@@ -92,27 +92,50 @@ They match report section 3; nothing needs correcting.
 
 ### Keyed checklist (A.3 items 1 to 7), 2026-09-29
 
-The key was read from the Firebase secret store straight into the environment of the one `node scripts/steam-live-check.mjs` command; it was not printed, logged or saved. No test-account Steam IDs (`QIT_CHECK_*`) were supplied for this run, and no other people's profiles were looked up, so every check that needs an account was skipped. Those items stay unverified, and the wrappers keep accepting each documented variant (field present or missing, 401 or 403) until someone runs them with supplied test accounts.
+The test accounts were the Steam accounts already stored in QIT's own Firestore (`users`, read-only). There were 3 of them, and no friend IDs are cached there. The key was read from the Firebase secret store straight into the environment of the one command that needed it, and the Steam IDs were passed only through that command's environment. Neither the key nor any Steam ID was printed, logged or saved. Keyed calls sorted the 3 accounts by real privacy state:
+
+- Account A: `GetOwnedGames` returns 87 games with extra fields (per-platform playtime, `playtime_disconnected`, `rtime_last_played`), but `GetPlayerAchievements` answers 403 "Profile is not public". The friends list is public.
+- Account B: owned games (241), achievements and recent games are all public. The friends list is private.
+- Account C: `GetOwnedGames` returns 51 games, but `GetPlayerAchievements` answers 403 "Profile is not public".
+- All three have `communityvisibilitystate` 3 (public profile). None has every `playtime_forever` at 0, and none gets an empty `GetOwnedGames` response.
 
 | Item | Result |
 |---|---|
-| 1. `GetOwnedGames` fields and never-played games | skipped: no public test account supplied |
-| 2. `GetOwnedGames` with "total playtime private" | skipped: no hidden-playtime test account supplied |
-| 3. `GetPlayerAchievements` fields, 400 and 403 shapes | skipped: no public or private test account supplied |
-| 4. `GetSchemaForGame` with `l=english` | run, see below |
-| 5. `GetPlayerSummaries` public vs friends-only | skipped: no public or friends-only test account supplied |
-| 6. `GetRecentlyPlayedGames` shape and private 403 | skipped: no public or private test account supplied |
-| 7. `GetFriendList` for a private list | skipped: no private-friends-list test account supplied |
+| 1. `GetOwnedGames` fields and never-played games | run (accounts A and B) |
+| 1b. `GetOwnedGames` with private Game details | skipped: no stored account has Game details private to `GetOwnedGames` (all 3 return their games) |
+| 2. `GetOwnedGames` with "total playtime private" | skipped: no stored account has hidden total playtime (every account has some `playtime_forever` above 0) |
+| 3. `GetPlayerAchievements` fields, 400 and 403 shapes | run (B for fields, C for 403) |
+| 4. `GetSchemaForGame` with `l=english` | run (no account needed) |
+| 5. `GetPlayerSummaries` public vs friends-only | public run (B and C); friends-only skipped: no stored account has a friends-only or private profile |
+| 6. `GetRecentlyPlayedGames` shape and private 403 | shape run (B and C); the private 403 was not seen, because every stored account answers 200 |
+| 7. `GetFriendList` for a private list | run (B); public list run (A) |
 
-Item 4, `GetSchemaForGame` (no account needed):
+1. `GetOwnedGames` (`include_appinfo=1`, `include_played_free_games=1`), HTTP 200:
+   - Account B (241 games): every game has `appid, name, playtime_forever, img_icon_url`. `has_community_visible_stats` is on 203 games, `playtime_2weeks` only on the 2 games played in the last two weeks, and `content_descriptorids` and `has_leaderboards` on some. **`rtime_last_played` is absent on every game**, including the 154 that were played. A never-played game (87 of them) has `playtime_forever: 0` and no `playtime_2weeks`.
+   - Account A (87 games): `rtime_last_played` is on all 87 games, plus `playtime_windows_forever`, `playtime_mac_forever`, `playtime_linux_forever`, `playtime_deck_forever` and `playtime_disconnected`. The 6 never-played games have `rtime_last_played: 0`. Every played game has a non-zero value.
+   - Result: `rtime_last_played` is not returned for every account; it came back only for the account that also gets the extra playtime fields. The wrapper maps an absent value to `null` (unknown), and a 0 on a never-played game is kept as 0.
+3. `GetPlayerAchievements` (`l=english`):
+   - Account B, app 730: HTTP 200, `playerstats` has `steamID, gameName, achievements, success: true`. Each achievement has `apiname, achieved, unlocktime, name, description`. The hidden achievement's `description` is an empty string here, while the schema leaves the field out.
+   - App 7 (no stats): HTTP 400, JSON `{"playerstats": {"success": false, "error": "Requested app has no stats"}}`, which becomes `no_stats`.
+   - Accounts A and C: HTTP 403, JSON `{"playerstats": {"success": false, "error": "Profile is not public"}}`, which becomes `private`. Both accounts still get their games back from `GetOwnedGames` and `GetRecentlyPlayedGames`, so achievements can be private while owned games are visible.
+4. `GetSchemaForGame` (`l=english`):
+   - App 620: 51 achievements with `name, defaultvalue, displayName, hidden, description, icon, icongray`; none hidden.
+   - App 1245620: 42 achievements, 36 hidden, and none of the hidden ones has a `description` field. App 730: 1 hidden achievement, also without `description`.
+   - `icon` and `icongray` are always present and are absolute `https://` URLs. App 7: HTTP 200 with `game: {}`, so the wrapper returns an empty list.
+5. `GetPlayerSummaries`, public profiles (B and C): HTTP 200 with `communityvisibilitystate: 3`. `personastate`, `lastlogoff`, `profilestate`, `commentpermission`, `timecreated`, `personastateflags`, `primaryclanid` and `loccountrycode` are present; `realname` appears only when set. `gameextrainfo` is absent (neither was in a game).
+6. `GetRecentlyPlayedGames`: HTTP 200, `response` has `total_count, games`. Each game has `appid, name, playtime_2weeks, playtime_forever, img_icon_url`, plus per-platform playtime for account A. Account C also answers 200 with games, even though its achievements are private.
+7. `GetFriendList`: a private list is **HTTP 401 with a JSON body `{}`**, not an HTML page, and no 403 was seen. A public list is HTTP 200 with `friendslist.friends` of `steamid, relationship, friend_since`.
 
-- App 620: HTTP 200, `game` has `gameName, gameVersion, availableGameStats`; 51 achievements, each with `name, defaultvalue, displayName, hidden, description, icon, icongray`; none hidden; every `icon` is an absolute `https://` URL.
-- App 1245620 (has hidden achievements): 42 achievements, 36 hidden. `description` is present on 6 of 42, and none of the hidden ones has it. Hidden achievements omit the field entirely rather than sending a blank string. `icon` and `icongray` are present and absolute on all 42.
-- App 7 (no stats): HTTP 200 with `game: {}`, not an error, so `getSchemaForGame` returns an empty list.
+Bad key (checked with a made-up key, no account): HTTP 403, `text/html`, body starting "Forbidden ... Access is denied. Retrying will not help. Please verify your key= parameter". So a 403 alone cannot mean "private". `classifySteamStatus` maps a thrown 403 to `unavailable`. `getOwnedGames` throws on any 403. `getRecentlyPlayedGames`, `getFriendList` and `getGlobalAchievementPercentages` throw on a non-JSON 403, and `getPlayerAchievements` throws on any 400 or 403 that lacks `success: false`.
 
-Bad key (checked with a made-up key, no account): HTTP 403, `text/html`, body starting "Forbidden ... Access is denied. Retrying will not help. Please verify your key= parameter". This confirmed that a 403 alone cannot mean "private". `getOwnedGames` now throws on any 403, and `getRecentlyPlayedGames` and `getFriendList` throw on a non-JSON 403.
+None of the real responses disproved a wrapper's parsing. The HTML 403 on a bad key is why the thrown 403 kind changed.
 
-Corrections to the plan's Steam API table from this run:
+Corrections to the plan's Steam API table:
 
+- `GetOwnedGames`: `rtime_last_played` is not returned for every account. For some public accounts it is absent from every game, so an absent value is unknown, never "never played". Only a present 0 on a game with `playtime_forever: 0` means never played. Per-platform playtime fields and `playtime_disconnected` exist but were not returned for every account.
+- `GetOwnedGames` vs `GetPlayerAchievements`: getting games back does not mean achievements are visible. Two accounts returned their games but got 403 "Profile is not public" from `GetPlayerAchievements`.
+- `GetFriendList`: a private list is 401 with a JSON `{}` body; no 403 was seen.
+- `GetPlayerAchievements`: the 400 and 403 bodies are `playerstats: { success: false, error }` with the messages above. With `l=english`, a hidden achievement's `description` is an empty string.
 - `GetSchemaForGame`: an app without stats answers HTTP 200 with an empty `game` object, not an error status. Hidden achievements have no `description` field at all.
 - Keyed endpoints: a wrong or blocked key answers with an HTML 403, the same status the plan lists for private data. A 403 therefore counts as private only when it carries a JSON body from Steam, never from the status alone.
+- Still unverified, because no stored account has the setting: the `GetOwnedGames` private-Game-details shape, the hidden-total-playtime behavior, friends-only summary fields, and the private 403 from `GetRecentlyPlayedGames`.

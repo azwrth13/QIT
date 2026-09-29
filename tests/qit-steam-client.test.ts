@@ -82,7 +82,7 @@ describe('URL builders', () => {
 describe('error taxonomy and Retry-After', () => {
   it('classifies statuses', () => {
     expect([401, 403, 404, 429, 400, 414, 408, 500, 503, 0].map(classifySteamStatus)).toEqual(
-      ['private', 'private', 'not_found', 'rate_limited', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable']);
+      ['private', 'unavailable', 'not_found', 'rate_limited', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable', 'unavailable']);
   });
   it('parses delta seconds and HTTP dates', () => {
     expect(parseRetryAfter('3')).toBe(3000);
@@ -286,8 +286,8 @@ describe('owned games', () => {
   it('a key-block 403 is an error, never a cached private state', async () => {
     const block = () => new Response('<html><head><title>Forbidden</title></head><body>Access is denied.</body></html>', { status: 403 });
     const { client } = harness([block(), block(), json({}, 403)]);
-    await expect(getOwnedGames(steamId, {}, client)).rejects.toMatchObject({ status: 403 });
-    await expect(getRecentlyPlayedGames(steamId, undefined, client)).rejects.toMatchObject({ status: 403 });
+    await expect(getOwnedGames(steamId, {}, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
+    await expect(getRecentlyPlayedGames(steamId, undefined, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
     expect(await getRecentlyPlayedGames(steamId, undefined, client)).toEqual({ state: 'private' });
   });
 });
@@ -310,7 +310,7 @@ describe('players', () => {
     ]);
     expect(await getFriendList(steamId, client)).toEqual({ state: 'public', friends: [{ steamid: '76561198000000001', friend_since: 5 }] });
     for (let i = 0; i < 3; i++) expect(await getFriendList(steamId, client)).toEqual({ state: 'private' });
-    await expect(getFriendList(steamId, client)).rejects.toMatchObject({ status: 403 });
+    await expect(getFriendList(steamId, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
   });
   it('resolves vanity names', async () => {
     const { client, urls } = harness([json({ response: { success: 1, steamid: steamId } }), json({ response: { success: 42, message: 'No match' } })]);
@@ -345,7 +345,7 @@ describe('achievements', () => {
     expect(await getPlayerAchievements(steamId, 1, 'english', client)).toEqual({ state: 'no_stats' });
     expect(await getPlayerAchievements(steamId, 1, 'english', client)).toEqual({ state: 'private' });
     expect(await getPlayerAchievements(steamId, 1, 'english', client)).toEqual({ state: 'no_stats' });
-    await expect(getPlayerAchievements(steamId, 1, 'english', client)).rejects.toMatchObject({ kind: 'private', status: 403 });
+    await expect(getPlayerAchievements(steamId, 1, 'english', client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
     await expect(getPlayerAchievements(steamId, 1, 'english', client)).rejects.toMatchObject({ kind: 'unavailable' });
   });
   it('reads the schema, marking hidden achievements', async () => {
@@ -365,13 +365,15 @@ describe('achievements', () => {
 });
 
 describe('keyless endpoints', () => {
-  it('global rarity parses string percents; 403 means no stats', async () => {
+  it('global rarity parses string percents; a JSON 403 means no stats, an HTML 403 throws', async () => {
     const { client, urls } = harness([
       json({ achievementpercentages: { achievements: [{ name: 'ACH.A', percent: '74.1' }, { name: 'ACH.B', percent: 5 }, { name: 'ACH.C', percent: 'x' }] } }),
       json({}, 403),
+      new Response('<html>Forbidden</html>', { status: 403 }),
     ]);
     expect(await getGlobalAchievementPercentages(620, client)).toEqual([{ apiname: 'ACH.A', percent: 74.1 }, { apiname: 'ACH.B', percent: 5 }]);
     expect(await getGlobalAchievementPercentages(7, client)).toBeNull();
+    await expect(getGlobalAchievementPercentages(620, client)).rejects.toMatchObject({ kind: 'unavailable', status: 403 });
     expect(urls.every(url => !url.searchParams.has('key'))).toBe(true);
     expect(urls[0].searchParams.get('gameid')).toBe('620');
   });

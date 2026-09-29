@@ -86,7 +86,7 @@ async function playerAchievements() {
   const result = await get('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: ids.public, appid, l: 'english' });
   const achievements = result.body?.playerstats?.achievements ?? [];
   out(`### ${title}`);
-  out(`- app ${appid}: ${shape(result)}; playerstats keys: ${Object.keys(result.body?.playerstats ?? {}).join(', ') || 'none'}; achievements: ${achievements.length}`);
+  out(`- app ${appid}: ${shape(result)}; playerstats keys: ${Object.keys(result.body?.playerstats ?? {}).join(', ') || 'none'}; success: ${result.body?.playerstats?.success}; error: ${result.body?.playerstats?.error ?? 'n/a'}; achievements: ${achievements.length}`);
   out(`- achievement keys: ${keysOf(achievements)}`);
   out(`- blank description: ${achievements.filter(a => !a.description).length}; locked with unlocktime 0: ${achievements.filter(a => a.achieved === 0 && a.unlocktime === 0).length}`);
   const noStats = await get('/ISteamUserStats/GetPlayerAchievements/v1/', { steamid: ids.public, appid: noStatsAppid, l: 'english' });

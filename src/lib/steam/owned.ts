@@ -1,5 +1,5 @@
 import { isSteamId } from '../steam';
-import { classifySteamStatus, getSteamClient, SteamClientError, type SteamClient } from './client';
+import { getSteamClient, SteamClientError, type SteamClient } from './client';
 import { steamKeyedUrl } from './urls';
 
 /** `IPlayerService/GetOwnedGames` and `GetRecentlyPlayedGames` (keyed; target's Game details must be public). */
@@ -73,7 +73,7 @@ export async function getRecentlyPlayedGames(steamId: string, limit?: number, cl
   if (limit !== undefined) params.count = String(Math.max(1, Math.floor(limit)));
   const { status, data } = await client.request<{ response?: { total_count?: number; games?: RawOwnedGame[] } }>(
     steamKeyedUrl('/IPlayerService/GetRecentlyPlayedGames/v1/', params), { accept: [403] });
-  if (status === 403 && data === null) throw new SteamClientError(classifySteamStatus(status), status);
+  if (status === 403 && data === null) throw new SteamClientError('unavailable', status);
   const response = data?.response;
   if (!response || typeof response.total_count !== 'number') return { state: 'private' };
   const games = (response.games ?? []).map(toOwnedGame).filter((game): game is OwnedGame => game !== null)
