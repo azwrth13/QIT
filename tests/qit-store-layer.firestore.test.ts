@@ -65,7 +65,7 @@ function syntheticLibrary(size: number): Map<number, LibIndexPatch> {
 }
 
 describe.skipIf(!emulated)('library index (emulator)', () => {
-  it('stores a synthetic 8,000-game library within document and index-entry limits, loading it in four reads', async () => {
+  it('stores a synthetic 8,000-game library within the document size limit and the estimated index-entry limit, loading it in four reads', async () => {
     const steamId = freshUser();
     const library = syntheticLibrary(8000);
     expect((await patchLibIndex(steamId, library, { create: true })).applied).toHaveLength(8000);
@@ -79,6 +79,8 @@ describe.skipIf(!emulated)('library index (emulator)', () => {
       const bytes = documentSize(path, data);
       const exempt = estimateIndexEntries(data, ['games']);
       const unexempt = estimateIndexEntries(data);
+      // The emulator enforces neither the index-entry limit nor fieldOverrides, so index entries are estimated from the
+      // documented rules; the deployed exemption is confirmed by checking the deployed index configuration.
       // Games a chunk could hold before reaching 1 MiB, and before reaching 40,000 index entries without the exemption.
       const bySize = Math.floor(MAX_DOCUMENT_BYTES / (bytes / count));
       const byUnexemptIndex = Math.floor(MAX_INDEX_ENTRIES / (unexempt / count));

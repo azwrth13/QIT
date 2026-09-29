@@ -16,11 +16,9 @@ const CHUNKS = Array.from({ length: LIB_INDEX_CHUNKS }, (_, chunk) => chunk);
 
 // Almost every Steam appid is a multiple of 10, so `appid % 4` would leave chunks 1 and 3 nearly empty.
 // A multiplicative (Fibonacci) hash keeps the top CHUNK_BITS bits, spreading any stride of appids evenly.
-const chunkOf = (appid: number) => Math.imul(appid, 0x9e3779b1) >>> (32 - CHUNK_BITS);
-
-/** The chunk holding `appid`. Every reader and writer of the index goes through this. */
+/** The chunk holding `appid`. The single owner of the chunk rule: every reader and writer of the index goes through this. */
 export function libIndexChunkOf(appid: number | string): number {
-  return chunkOf(Number(appIdSegment(appid)));
+  return Math.imul(Number(appIdSegment(appid)), 0x9e3779b1) >>> (32 - CHUNK_BITS);
 }
 
 /** A field set to `null` is removed (back to unknown); `undefined` fields are ignored. The name cannot be removed. */
@@ -68,7 +66,7 @@ export function planLibIndexPatch(patches: LibIndexPatches, requireName: boolean
   const list = patches instanceof Map ? [...patches] : Object.entries(patches);
   for (const [key, patch] of list) {
     const appid = Number(appIdSegment(key));
-    const chunk = chunkOf(appid);
+    const chunk = libIndexChunkOf(appid);
     const fields: Record<string, unknown> = {};
     for (const [field, value] of Object.entries(patch)) {
       if (value === undefined) continue;
@@ -126,7 +124,7 @@ export async function removeFromLibIndex(steamId: string, appids: number[]): Pro
   const plan = new Map<number, Set<number>>();
   for (const id of appids) {
     const appid = Number(appIdSegment(id));
-    const chunk = chunkOf(appid);
+    const chunk = libIndexChunkOf(appid);
     if (!plan.has(chunk)) plan.set(chunk, new Set());
     plan.get(chunk)!.add(appid);
   }
