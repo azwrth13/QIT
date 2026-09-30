@@ -50,13 +50,33 @@ export interface UserRecord {
   flags?: { playtimeHidden?: boolean; friendsListPublic?: boolean };
 }
 
+/** One friend (or pinned player) as last seen in `GetPlayerSummaries`. Written only by `src/lib/social/friends.ts`. */
+export interface FriendSummaryRecord {
+  name: string;
+  /** Profile page URL */
+  url: string;
+  /** Full-size avatar URL */
+  avatar: string;
+  avatarMedium?: string;
+  /** Steam `personastate`: 0 offline, 1 online, 2 busy, 3 away, 4 snooze, 5 looking to trade, 6 looking to play. Absent when Steam does not share it. */
+  status?: number;
+  /** Steam app id of the game being played, when it is a Steam game and visible */
+  gameId?: number;
+  /** Name of the game being played, when visible */
+  game?: string;
+}
+
+/** `users/{id}/meta/friends`: a 15-minute snapshot of the requester's friends list. */
 export interface FriendsMetaRecord {
+  /** Friend ids in Steam's order. When the list is private, the pinned ids that were looked up instead. */
   ids: string[];
-  summaries: Record<string, { name: string; avatar?: string; status?: number; gameId?: number }>;
-  state: 'ok' | 'private' | 'error';
+  /** Players Steam has no summary for are absent. */
+  summaries: Record<string, FriendSummaryRecord>;
+  state: 'ok' | 'private';
   fetchedAt: Timestamp;
 }
 
+/** `users/{id}/meta/pinned`: players the user added by hand, used when the friends list is private. */
 export interface PinnedMetaRecord {
   ids: string[];
   updatedAt: Timestamp;
@@ -162,9 +182,18 @@ export interface AppAchievementsRecord {
   fetchedAt: Timestamp;
 }
 
+/**
+ * `publicLibraries/{steamId}`: a non-QIT player's library, cached for a short time. Written only by
+ * `src/lib/social/libraries.ts`.
+ */
 export interface PublicLibraryRecord {
   state: 'ok' | 'private' | 'not_found' | 'error';
-  games: Record<string, LibIndexEntry>;
+  /**
+   * The games as one JSON string (see `encodeGames` in `social/libraries.ts`), empty unless `state` is `ok`. It is a
+   * string, not a map, because every map key and subfield of a document gets its own index entries, and a large
+   * library would go over Firestore's 40,000 index entries per document.
+   */
+  games: string;
   fetchedAt: Timestamp;
   expiresAt: Timestamp;
 }
