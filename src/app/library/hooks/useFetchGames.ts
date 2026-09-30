@@ -32,6 +32,12 @@ export const useFetchGames = () => {
     try {
       setLoading(true);
       setError(null);
+      const url = new URL(window.location.href);
+      const signedInNow = url.searchParams.has('autosync');
+      if (signedInNow) {
+        url.searchParams.delete('autosync');
+        window.history.replaceState(window.history.state, '', url);
+      }
       const response = await fetch('/api/games');
       if (response.status === 401) { setUnauthorized(true); setGames([]); return; }
       setUnauthorized(false);
@@ -42,7 +48,7 @@ export const useFetchGames = () => {
       const data = await response.json();
       setGames(data.games || []);
       setLastSynced(data.lastSynced || null);
-      if (data.autoSync && !autoSynced.current) {
+      if ((signedInNow || data.autoSync) && !autoSynced.current) {
         autoSynced.current = true;
         void refresh();
       }
