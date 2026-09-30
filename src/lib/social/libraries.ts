@@ -149,9 +149,8 @@ export async function getSteamLibrary(steamId: string, socialDeps: SocialDeps = 
 
 /**
  * The libraries of the given players, in the order given (repeated ids once), for group features. A QIT user's
- * library index is used when it is at most 30 minutes old; an older one is refreshed from Steam, and when Steam
- * cannot read it the player is marked not public so the index is not reused. Everyone else comes from the 30-minute
- * cache or live from Steam. A player whose library cannot be read gets a state (`private`, `not_found` or `error`)
+ * library index is used when it is at most 30 minutes old; an older one is refreshed from Steam like everyone else's,
+ * which comes from the 30-minute cache or live from Steam. A player whose library cannot be read gets a state (`private`, `not_found` or `error`)
  * and no games; the call itself only throws for invalid input.
  */
 export async function getLibraryFor(ids: readonly string[], socialDeps: SocialDeps = {}): Promise<FriendLibrary[]> {
@@ -171,7 +170,5 @@ export async function getLibraryFor(ids: readonly string[], socialDeps: SocialDe
 
   const others = unique.filter(id => !found.has(id));
   if (others.length) await readFromSteam(others, found, deps);
-  await Promise.all([...qit.keys()].filter(id => found.get(id)?.state !== 'ok').map(id =>
-    bestEffort('Marking a QIT profile not public failed', () => store.markNotPublic(id), undefined)));
   return unique.map(id => found.get(id) as FriendLibrary);
 }

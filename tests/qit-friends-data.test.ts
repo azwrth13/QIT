@@ -19,7 +19,6 @@ function memoryStore(overrides: Partial<SocialStore> = {}) {
     pinned: new Map<string, string[]>(),
     libraries: new Map<string, PublicLibraryRecord>(),
     qit: new Map<string, QitLibrary>(),
-    notPublic: new Set<string>(),
   };
   const store: SocialStore = {
     readFriends: async id => state.friends.get(id) ?? null,
@@ -34,8 +33,7 @@ function memoryStore(overrides: Partial<SocialStore> = {}) {
     },
     readPublicLibraries: async ids => new Map(ids.flatMap(id => state.libraries.has(id) ? [[id, state.libraries.get(id)!] as const] : [])),
     writePublicLibrary: async (id, record) => { state.libraries.set(id, record); },
-    readQitLibraries: async ids => new Map(ids.flatMap(id => state.qit.has(id) && !state.notPublic.has(id) ? [[id, state.qit.get(id)!] as const] : [])),
-    markNotPublic: async id => { state.notPublic.add(id); },
+    readQitLibraries: async ids => new Map(ids.flatMap(id => state.qit.has(id) ? [[id, state.qit.get(id)!] as const] : [])),
     ...overrides,
   };
   return { store, state };
@@ -426,22 +424,19 @@ describe('getLibraryFor', () => {
     const [library] = await getLibraryFor([publicUser], { store, client: steam.client, now: () => NOW });
     expect(library).toMatchObject({ state: 'ok', source: 'steam' });
     expect([...library.games.keys()]).toEqual([620, 730]);
-    expect(state.notPublic.has(publicUser)).toBe(false);
   });
 
   it.each([
     ['private', privateGames],
     ['not_found', missing],
     ['error', broken],
-  ] as const)('leaves out a stale QIT user whose refresh is %s, and stops reusing their index', async (expected, id) => {
+  ] as const)('leaves out a stale QIT user whose refresh is %s', async (expected, id) => {
     const steam = world();
     const { store, state } = memoryStore();
     state.qit.set(id, { games: new Map<number, LibIndexEntry>([[10, { n: 'Counter-Strike' }]]), syncedAt: NOW - QIT_INDEX_MAX_AGE_MS - 1 });
     const [library] = await getLibraryFor([id], { store, client: steam.client, now: () => NOW });
     expect(library).toMatchObject({ state: expected, source: 'steam' });
     expect(library.games.size).toBe(0);
-    expect(state.notPublic.has(id)).toBe(true);
-    expect(await store.readQitLibraries([id])).toEqual(new Map());
   });
 
   it('getSteamLibrary reads from Steam and never from a stored QIT index', async () => {

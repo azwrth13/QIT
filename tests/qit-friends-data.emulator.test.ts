@@ -111,7 +111,7 @@ describe.skipIf(!emulated)('friend libraries (emulator)', () => {
     expect(world.calls.some(url => url.searchParams.get('steamid') === qit || url.searchParams.get('steamids') === qit)).toBe(false);
   });
 
-  it('marks a QIT user not public when the refresh of a stale index finds the library private', async () => {
+  it('leaves out a QIT user whose stale index is refreshed and found private, without touching their user document', async () => {
     const stale = freshUser();
     await db.doc(paths.user(stale)).set({ steamId: stale, public: true, lastSyncedAt: new Date().toISOString() });
     await patchLibIndex(stale, { 620: { n: 'Portal 2', p: 90 } }, { create: true });
@@ -120,8 +120,8 @@ describe.skipIf(!emulated)('friend libraries (emulator)', () => {
       : null);
     const [library] = await getLibraryFor([stale], { client: world.client, now: () => Date.now() + 31 * 60 * 1000 });
     expect(library).toMatchObject({ state: 'private', source: 'steam' });
-    expect((await db.doc(paths.user(stale)).get()).data()?.public).toBe(false);
-    expect(await store.readQitLibraries([stale])).toEqual(new Map());
+    expect(library.games.size).toBe(0);
+    expect((await db.doc(paths.user(stale)).get()).data()?.public).toBe(true);
   });
 
   it('uses the index when a recent sync found no changes, even though the index was written long ago', async () => {
