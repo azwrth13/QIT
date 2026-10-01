@@ -8,7 +8,7 @@ Since `validateOpenId` strictly requires an exact `return_to` parameter that mat
 ## Allow-list Validation
 To prevent open redirects, the `next` path is strictly validated:
 - Only same-origin relative paths are accepted.
-- Accepted paths must match `/library*` or `/lobby/*`.
+- Accepted paths must be lobby join paths of the form `/lobby/<id>`.
 - Absolute URLs, protocol-relative `//` URLs, backslashes, and encoded variants are rejected.
 
 If the `next` path is invalid or missing, the callback falls back to the default post-login destination (`/library?autosync=1`).

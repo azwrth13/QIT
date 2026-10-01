@@ -33,8 +33,6 @@ afterEach(() => {
 
 describe('Next path validation', () => {
   test('validates next paths correctly', () => {
-    expect(isValidNextPath('/library')).toBe(true);
-    expect(isValidNextPath('/library?autosync=1')).toBe(true);
     expect(isValidNextPath('/lobby/123')).toBe(true);
     expect(isValidNextPath('/lobby/foo-bar')).toBe(true);
     expect(isValidNextPath(null)).toBe(false);
@@ -49,6 +47,11 @@ describe('Next path validation', () => {
     expect(isValidNextPath('/etc/passwd')).toBe(false);
     expect(isValidNextPath('/lobby/../etc/passwd')).toBe(false);
     expect(isValidNextPath('/other-path')).toBe(false);
+    expect(isValidNextPath('/library')).toBe(false);
+    expect(isValidNextPath('/library?autosync=1')).toBe(false);
+    expect(isValidNextPath('/library/123')).toBe(false);
+    expect(isValidNextPath('/lobby/')).toBe(false);
+    expect(isValidNextPath('/lobby/123/extra')).toBe(false);
   });
 });
 

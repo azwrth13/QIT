@@ -58,7 +58,7 @@ export function isValidNextPath(path: unknown): path is string {
 
   try {
     const parsed = new URL(path, 'http://localhost');
-    return parsed.pathname.startsWith('/lobby/') || parsed.pathname === '/library' || parsed.pathname.startsWith('/library/');
+    return /^\/lobby\/[^/]+$/.test(parsed.pathname);
   } catch {
     return false;
   }
