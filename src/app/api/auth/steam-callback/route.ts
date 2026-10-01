@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getSteamProfile, logServerError, OPENID_ENDPOINT, validateOpenId } from '@/lib/steam';
 import { getBaseUrl } from '@/lib/base-url';
-import { createSession, SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
+import { createSession, verifyPreAuthSession, SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
 import { ensureUser } from '@/lib/library-data';
 
 function loginError(req: Request, code: string) {
@@ -27,7 +28,14 @@ export async function GET(req: Request) {
     const profile = await getSteamProfile(steamId);
     if (!profile) return loginError(req, 'profile_not_found');
     await ensureUser(steamId, profile);
-    const response = NextResponse.redirect(`${getBaseUrl(req)}/library?autosync=1`);
+
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE)?.value;
+    const nextPath = await verifyPreAuthSession(token);
+
+    const dest = nextPath ? `${getBaseUrl(req)}${nextPath}` : `${getBaseUrl(req)}/library?autosync=1`;
+    const response = NextResponse.redirect(dest);
+
     response.cookies.set(SESSION_COOKIE, await createSession(steamId), sessionCookieOptions);
     response.cookies.set('steamid', '', { ...sessionCookieOptions, maxAge: 0 });
     return response;

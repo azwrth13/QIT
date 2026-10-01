@@ -30,3 +30,22 @@ export async function verifySession(token: string | undefined): Promise<string |
     return isSteamId(data.steamId) && typeof data.expiresAt === 'number' && data.expiresAt > Date.now() ? data.steamId : null;
   } catch { return null; }
 }
+
+export const PRE_AUTH_TTL = 60 * 10;
+
+export async function createPreAuthSession(next: string): Promise<string> {
+  return sealData({ next, expiresAt: Date.now() + PRE_AUTH_TTL * 1000 }, { password: password(), ttl: PRE_AUTH_TTL });
+}
+
+export async function verifyPreAuthSession(token: string | undefined): Promise<string | null> {
+  if (!token) return null;
+  const secret = password();
+  try {
+    const data = await unsealData<{ next?: unknown; expiresAt?: unknown }>(token, { password: secret, ttl: PRE_AUTH_TTL });
+    return isValidNextPath(data.next) && typeof data.expiresAt === 'number' && data.expiresAt > Date.now() ? data.next : null;
+  } catch { return null; }
+}
+
+export function isValidNextPath(path: unknown): path is string {
+  return typeof path === 'string' && /^\/lobby\/[A-Za-z0-9_-]{1,64}$/.test(path);
+}
