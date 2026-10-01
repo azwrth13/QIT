@@ -6,7 +6,7 @@ import { createPreAuthSession, isValidNextPath, PRE_AUTH_TTL, SESSION_COOKIE, se
 export async function GET(req: Request) {
   const reqUrl = new URL(req.url);
   const next = reqUrl.searchParams.get('next');
-  
+
   const baseUrl = getBaseUrl(req);
   const url = new URL(OPENID_ENDPOINT);
   url.search = new URLSearchParams({
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     'openid.identity': `${OPENID_NAMESPACE}/identifier_select`,
     'openid.claimed_id': `${OPENID_NAMESPACE}/identifier_select`,
   }).toString();
-  
+
   const response = NextResponse.redirect(url);
   if (isValidNextPath(next)) {
     response.cookies.set(SESSION_COOKIE, await createPreAuthSession(next), { ...sessionCookieOptions, maxAge: PRE_AUTH_TTL });

@@ -28,14 +28,14 @@ export async function GET(req: Request) {
     const profile = await getSteamProfile(steamId);
     if (!profile) return loginError(req, 'profile_not_found');
     await ensureUser(steamId, profile);
-    
+
     const cookieStore = await cookies();
     const token = cookieStore.get(SESSION_COOKIE)?.value;
     const nextPath = await verifyPreAuthSession(token);
-    
+
     const dest = nextPath ? `${getBaseUrl(req)}${nextPath}` : `${getBaseUrl(req)}/library?autosync=1`;
     const response = NextResponse.redirect(dest);
-    
+
     response.cookies.set(SESSION_COOKIE, await createSession(steamId), sessionCookieOptions);
     response.cookies.set('steamid', '', { ...sessionCookieOptions, maxAge: 0 });
     return response;
