@@ -30,3 +30,36 @@ export async function verifySession(token: string | undefined): Promise<string |
     return isSteamId(data.steamId) && typeof data.expiresAt === 'number' && data.expiresAt > Date.now() ? data.steamId : null;
   } catch { return null; }
 }
+
+export const PRE_AUTH_TTL = 60 * 10;
+
+export async function createPreAuthSession(next: string): Promise<string> {
+  return sealData({ next, expiresAt: Date.now() + PRE_AUTH_TTL * 1000 }, { password: password(), ttl: PRE_AUTH_TTL });
+}
+
+export async function verifyPreAuthSession(token: string | undefined): Promise<string | null> {
+  if (!token) return null;
+  try {
+    const data = await unsealData<{ next?: unknown; expiresAt?: unknown }>(token, { password: password(), ttl: PRE_AUTH_TTL });
+    return typeof data.next === 'string' && typeof data.expiresAt === 'number' && data.expiresAt > Date.now() ? data.next : null;
+  } catch { return null; }
+}
+
+export function isValidNextPath(path: unknown): path is string {
+  if (typeof path !== 'string' || !path) return false;
+  if (path.startsWith('//') || path.includes('\\') || path.includes('%5C') || path.includes('%5c')) return false;
+  
+  try {
+    new URL(path);
+    return false;
+  } catch {
+    // Expected for relative URLs
+  }
+
+  try {
+    const parsed = new URL(path, 'http://localhost');
+    return parsed.pathname.startsWith('/lobby/') || parsed.pathname === '/library' || parsed.pathname.startsWith('/library/');
+  } catch {
+    return false;
+  }
+}
