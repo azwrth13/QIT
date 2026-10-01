@@ -1,5 +1,5 @@
 import { test, expect, vi, beforeEach, afterEach, describe } from 'vitest';
-import { isValidNextPath, SESSION_COOKIE, createPreAuthSession, PRE_AUTH_TTL } from '../src/lib/session';
+import { isValidNextPath, SESSION_COOKIE, createPreAuthSession, createSession, verifySession, verifyPreAuthSession, PRE_AUTH_TTL } from '../src/lib/session';
 
 const { cookieValues, ensureUser } = vi.hoisted(() => ({
   cookieValues: new Map<string, string>(),
@@ -18,6 +18,8 @@ import { GET as loginGET } from '../src/app/api/auth/steam-login/route';
 import { GET as callbackGET } from '../src/app/api/auth/steam-callback/route';
 import { OPENID_ENDPOINT, OPENID_NAMESPACE } from '../src/lib/steam';
 
+const steamId = '76561198000000000';
+
 beforeEach(() => {
   cookieValues.clear();
   ensureUser.mockReset();
@@ -29,6 +31,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('Next path validation', () => {
@@ -60,38 +63,43 @@ describe('Next path validation', () => {
 });
 
 describe('Steam login and callback next path flow', () => {
-  test('steam-login stores valid next path in session cookie', async () => {
-    const req = new Request('https://qit.example/api/auth/steam-login?next=/lobby/123');
-    const res = await loginGET(req);
-    expect(res.status).toBe(307);
-    const setCookie = res.cookies.get(SESSION_COOKIE);
-    expect(setCookie).toBeDefined();
-    expect(setCookie?.value).toBeTruthy();
-    expect(setCookie?.maxAge).toBe(PRE_AUTH_TTL);
-  });
-
-  test.each([
-    'http://example.com/lobby',
-    '@evil.com/../lobby/1',
-    '',
-  ])('steam-login clears any stale pre-auth payload when next is %j', async (next) => {
-    const req = new Request(`https://qit.example/api/auth/steam-login?next=${encodeURIComponent(next)}`);
-    const res = await loginGET(req);
-    expect(res.status).toBe(307);
-    const setCookie = res.cookies.get(SESSION_COOKIE);
-    expect(setCookie?.value).toBe('');
-    expect(setCookie?.maxAge).toBe(0);
-  });
-
-  test('steam-login without next clears any stale pre-auth payload', async () => {
+  test('exact return_to', async () => {
     const res = await loginGET(new Request('https://qit.example/api/auth/steam-login'));
-    const setCookie = res.cookies.get(SESSION_COOKIE);
-    expect(setCookie?.value).toBe('');
-    expect(setCookie?.maxAge).toBe(0);
+    const url = new URL(res.headers.get('location')!);
+    expect(url.searchParams.get('openid.return_to')).toBe('https://qit.example/api/auth/steam-callback');
+  });
+
+  test('cookie unseals to the lobby with flags', async () => {
+    const cookie = (await loginGET(new Request('https://qit.example/api/auth/steam-login?next=/lobby/abc'))).cookies.get(SESSION_COOKIE);
+    expect(await verifyPreAuthSession(cookie?.value)).toBe('/lobby/abc');
+    expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'lax', path: '/', maxAge: PRE_AUTH_TTL });
+  });
+
+  test.each([undefined, '/lobby/abc'])('a signed-in user keeps their session (next=%j)', async (next) => {
+    cookieValues.set(SESSION_COOKIE, await createSession(steamId));
+    const res = await loginGET(new Request(`https://qit.example/api/auth/steam-login${next ? `?next=${next}` : ''}`));
+    expect(res.cookies.get(SESSION_COOKIE)).toBeUndefined();
+    expect(res.headers.get('location')).toBe(`https://qit.example${next ?? '/library'}`);
+  });
+
+  test('a pre-auth payload never authenticates and a session never yields a next', async () => {
+    expect(await verifySession(await createPreAuthSession('/lobby/abc'))).toBeNull();
+    expect(await verifyPreAuthSession(await createSession(steamId))).toBeNull();
+  });
+
+  test('an expired pre-auth payload is ignored', async () => {
+    const token = await createPreAuthSession('/lobby/abc');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + (PRE_AUTH_TTL + 120) * 1000);
+    expect(await verifyPreAuthSession(token)).toBeNull();
+  });
+
+  test('rejects oversized lobby ids', async () => {
+    const cookie = (await loginGET(new Request(`https://qit.example/api/auth/steam-login?next=/lobby/${'a'.repeat(65)}`))).cookies.get(SESSION_COOKIE);
+    expect(cookie?.maxAge).toBe(0);
   });
 
   test('steam-callback retrieves valid next path and redirects', async () => {
-    const steamId = '76561198000000000';
     cookieValues.set(SESSION_COOKIE, await createPreAuthSession('/lobby/123'));
     
     vi.mocked(fetch)
@@ -112,10 +120,12 @@ describe('Steam login and callback next path flow', () => {
     const res = await callbackGET(req);
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toBe('https://qit.example/lobby/123');
+
+    const newSessionCookie = res.cookies.get(SESSION_COOKIE);
+    expect(await verifySession(newSessionCookie?.value)).toBe(steamId);
   });
 
   test.each([undefined, '@evil.com/../lobby/1'])('steam-callback falls back to library?autosync=1 if next path is %j', async (next) => {
-    const steamId = '76561198000000000';
     cookieValues.clear();
     if (next !== undefined) cookieValues.set(SESSION_COOKIE, await createPreAuthSession(next));
     
