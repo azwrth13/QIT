@@ -7,7 +7,7 @@ import { cookies } from 'next/headers';
 export async function GET(req: Request) {
   const reqUrl = new URL(req.url);
   const next = reqUrl.searchParams.get('next');
-  
+
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (token) {

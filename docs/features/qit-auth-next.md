@@ -14,3 +14,5 @@ To prevent open redirects, the `next` path is strictly validated:
 The pre-auth cookie expires after 10 minutes. Starting a sign-in without a valid `next` clears any leftover pre-auth payload, so an abandoned lobby join cannot redirect a later sign-in.
 
 If the `next` path is invalid or missing, the callback falls back to the default post-login destination (`/library?autosync=1`).
+
+A user who already has a valid session is not sent through Steam again: `steam-login` keeps the existing session and redirects straight to a valid `next` path, or to `/library` otherwise.
