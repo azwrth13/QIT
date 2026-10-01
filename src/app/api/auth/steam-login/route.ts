@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { OPENID_ENDPOINT, OPENID_NAMESPACE } from '@/lib/steam';
 import { getBaseUrl } from '@/lib/base-url';
-import { createPreAuthSession, isValidNextPath, SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
+import { createPreAuthSession, isValidNextPath, PRE_AUTH_TTL, SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
 
 export async function GET(req: Request) {
   const reqUrl = new URL(req.url);
@@ -20,7 +20,9 @@ export async function GET(req: Request) {
   
   const response = NextResponse.redirect(url);
   if (isValidNextPath(next)) {
-    response.cookies.set(SESSION_COOKIE, await createPreAuthSession(next), sessionCookieOptions);
+    response.cookies.set(SESSION_COOKIE, await createPreAuthSession(next), { ...sessionCookieOptions, maxAge: PRE_AUTH_TTL });
+  } else {
+    response.cookies.set(SESSION_COOKIE, '', { ...sessionCookieOptions, maxAge: 0 });
   }
   return response;
 }
