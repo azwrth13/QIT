@@ -200,6 +200,6 @@ describe.skipIf(!emulated)('events and stats (emulator)', () => {
   });
 
   it('returns empty stats for a user with no events', async () => {
-    expect(await readStats(freshUser())).toEqual({ counters: {}, streak: null, updatedAt: null });
+    expect(await readStats(freshUser())).toMatchObject({ counters: {}, streak: null, updatedAt: null, progression: { current: 0, longest: 0 } });
   });
 });

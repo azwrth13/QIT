@@ -42,9 +42,9 @@ export function validateEvent(event: EventInput): void {
  * Stages an event and its counter increments in `tx` and returns the new event id. Use this from a transaction
  * that also changes the record the event describes; otherwise call `recordEvent`.
  */
-export function stageEvent(tx: Transaction, steamId: string, event: EventInput, now = Date.now()): string {
+export function stageEvent(tx: Transaction, steamId: string, event: EventInput, now = Date.now(), eventId?: string): string {
   validateEvent(event);
-  const ref = db.collection(paths.events(steamId)).doc();
+  const ref = eventId === undefined ? db.collection(paths.events(steamId)).doc() : db.doc(paths.event(steamId, eventId));
   const at = Timestamp.fromMillis(now);
   const record: EventRecord = stripUndefined({
     type: event.type,
@@ -60,7 +60,11 @@ export function stageEvent(tx: Transaction, steamId: string, event: EventInput, 
 }
 
 /** Appends one event and updates the stats counters atomically. Returns the event id. */
-export async function recordEvent(steamId: string, event: EventInput, now = Date.now()): Promise<string> {
+export async function recordEvent(steamId: string, event: EventInput, now = Date.now(), eventId?: string): Promise<string> {
   validateEvent(event);
-  return runTransaction(async tx => stageEvent(tx, steamId, event, now));
+  return runTransaction(async tx => {
+    // Stable IDs let importers/replayers retry without appending or incrementing twice. First write wins.
+    if (eventId !== undefined && (await tx.get(db.doc(paths.event(steamId, eventId)))).exists) return eventId;
+    return stageEvent(tx, steamId, event, now, eventId);
+  });
 }
