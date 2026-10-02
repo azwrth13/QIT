@@ -13,7 +13,7 @@ Pure library functions for features 1, 2, 3, 10, 11 and 15, exported from `src/l
 
 ## Never-played-together filters
 
-Firstmate clarified the original feature 15 specification through steering message `001.msg`: identify shared games that one or more players have never played. All four predicates take `GroupSignals`, so call them with `game.group`. They return booleans and require every selected player to own the game. They are pure group predicates for later Friend Night and lobby packages, rather than additions to the feature 18 session-filter registry.
+Feature 15 identifies shared games that one or more players have never played. All four predicates take `GroupSignals`, so call them with `game.group`. They return booleans and require every selected player to own the game. They are pure group predicates for later Friend Night and lobby packages, rather than additions to the feature 18 session-filter registry.
 
 | Predicate | Match |
 |---|---|
