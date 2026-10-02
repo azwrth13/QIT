@@ -14,6 +14,7 @@ export const COUNTER_DIMENSIONS: Readonly<Record<string, string>> = Object.freez
   accept: 'modeId',
   played: 'source',
   exclude: 'scope',
+  challenge_complete: 'kind',
 });
 
 const DIMENSION_VALUE = /^[a-z0-9_-]{1,40}$/;

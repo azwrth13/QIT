@@ -139,15 +139,40 @@ export interface DailyRecord {
   decidedAt?: Timestamp;
 }
 
+/** Both kinds target one locked achievement; `rare` adds a global unlock percent tier. */
+export type ChallengeKind = 'achievement' | 'rare';
+/** issued -> accepted -> completed | expired, issued -> declined | expired. */
+export type ChallengeStatus = 'issued' | 'accepted' | 'completed' | 'declined' | 'expired';
+
+/** An unlock that counted toward a completed challenge (`unlocktime` in Unix seconds, as Steam reports it). */
+export interface ChallengeUnlock {
+  apiname: string;
+  unlocktime: number;
+}
+
+/** Written only by `src/lib/history/challenges.ts`. */
 export interface ChallengeRecord {
-  kind: string;
+  kind: ChallengeKind;
   appid: number;
-  apiname?: string;
+  /** Game name at issue time. */
+  name?: string;
+  /** The target achievement. */
+  apiname: string;
+  achievementName?: string;
+  /** Absent for hidden achievements, whose description Steam blanks. */
+  achievementDescription?: string;
+  /** Rare tier, a global unlock percent ceiling (`rare` only). */
   threshold?: number;
-  acceptedAt: Timestamp;
-  status: string;
+  status: ChallengeStatus;
+  issuedAt: Timestamp;
+  acceptedAt?: Timestamp;
   completedAt?: Timestamp;
+  declinedAt?: Timestamp;
+  expiredAt?: Timestamp;
+  /** End of the offer while issued, end of the attempt once accepted. */
   expiresAt: Timestamp;
+  /** The unlocks that completed the challenge. */
+  unlocks?: ChallengeUnlock[];
 }
 
 export interface AppMetaRecord {
