@@ -62,7 +62,7 @@ Percentages are floored, so 99.6% never reads as finished. Other numbers are rou
 
 ## Pure Random
 
-`modes/pure-random.ts` is the first mode that is not a stub. It needs only the library signals, works in every scope, gives every candidate weight 1 (so gamma has no effect) and emits `random_pick`. `tests/qit-foundation.test.ts` now lists it as implemented, and the other eight modes are still stubs.
+`modes/pure-random.ts` is the first mode that is not a stub. It needs only the library signals, works in every scope, gives every candidate weight 1 (so gamma has no effect) and emits `random_pick`. `tests/qit-foundation.test.ts` lists the implemented modes; see `docs/features/qit-modes-playtime.md` for the playtime modes.
 
 ## Tests
 
