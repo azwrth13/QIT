@@ -1,6 +1,8 @@
+import { knownPlaytime } from '../../library/backlog';
+import { playedWithin } from '../filters/recency';
 import { reason } from '../reasons';
 import type { Mode } from '../types';
-import { recentActivity, unfinishedAchievements } from './achievement-signals';
+import { unfinishedAchievements } from './achievement-signals';
 
 const finishSomething: Mode = {
   id: 'finish-something',
@@ -23,7 +25,8 @@ const finishSomething: Mode = {
       // Cap investment so a long game cannot dominate closeness to completion.
       weight += Math.min(minutes / Math.max(1, t.abandonedMaxMinutes), 1);
     }
-    if (recentActivity(candidate, ctx)) weight += 1;
+    if (knownPlaytime(candidate, ctx) &&
+      playedWithin(candidate.signals.library, t.recentRotationDays, ctx.now) === 'within') weight += 1;
     return {
       eligible: true, weight,
       reasons: [percent >= t.closeToCompletePercent

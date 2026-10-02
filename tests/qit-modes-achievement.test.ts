@@ -69,9 +69,21 @@ describe('achievement modes', () => {
     expect(finish.score(game(91, 100, 60_000), ctx).weight).toBeCloseTo(4.91);
     expect(finish.score(game(91, 100, 0, 30), ctx).weight).toBeCloseTo(4.91);
     expect(finish.score(game(91, 100, 0, 30 + 1 / day), ctx).weight).toBeCloseTo(3.91);
-    expect(finish.score(game(91, 100, 0, -1), ctx).weight).toBeCloseTo(3.91);
+    expect(finish.score(game(91, 100, 0, -1), ctx).weight).toBeCloseTo(4.91);
     const recent = game(91); recent.signals.library.playtime2Weeks = 1;
     expect(finish.score(recent, ctx).weight).toBeCloseTo(4.91);
+    const unknownSession = game(91, 100, 300); unknownSession.signals.library.playtime2Weeks = 0;
+    expect(finish.score(unknownSession, ctx).weight).toBeCloseTo(4.41);
+  });
+
+  it('finish and something different agree on recent rotation', () => {
+    const different = getMode('something-different');
+    const cases = [game(91, 100, 0, 30), game(91, 100, 300, 31), game(91, 100, 300, -1), game(91, 100, 0)];
+    const twoWeeks = game(91, 100, 300); twoWeeks.signals.library.playtime2Weeks = 1;
+    for (const candidate of [...cases, twoWeeks]) {
+      const recent = finish.score(candidate, ctx).weight - finish.score(game(91, 100, candidate.signals.library.playtimeForever), ctx).weight > 0.5;
+      expect(recent).toBe(!different.score(candidate, ctx).eligible);
+    }
   });
 
   it.each([hunter, finish])('$id keeps achievement eligibility while suppressing hidden-playtime bonuses', mode => {
