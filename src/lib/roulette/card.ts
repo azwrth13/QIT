@@ -33,7 +33,7 @@ export function buildCard({ candidate, reasons }: ScoredCandidate, { modeId, rol
     lastPlayedAt: library.lastPlayedAt,
     achievements,
     live: signals.live ?? null,
-    // Names and avatars for owners come from the group scopes' packages; the library scope has no other players.
+    // The group scopes do not resolve owner names or avatars yet; a later group UI package fills these in.
     friends: null,
     // Rolls inside the history window, before this one.
     previousSelections: signals.history?.timesRolled ?? 0,
