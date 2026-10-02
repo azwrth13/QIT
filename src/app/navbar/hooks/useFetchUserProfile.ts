@@ -31,7 +31,7 @@ export const useFetchUserProfile = () => {
           const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
           const saved = await fetch('/api/user/profile', {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tz, onlyIfMissing: true }),
+            body: JSON.stringify({ tz }),
           });
           if (saved.ok) setProfile({ ...data, tz: (await saved.json()).tz });
         } catch { /* Retry on the next profile load. */ }

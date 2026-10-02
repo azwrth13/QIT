@@ -19,14 +19,15 @@ export interface Progression {
   rareAchievementsCompleted: number;
 }
 
-type Action = { played?: boolean; challenge?: boolean; rare?: boolean };
-/** The extension point for qualifying actions. Decisions and rolls never earn a streak day. */
+type Action = { played?: boolean; untouchedOnly?: boolean; challenge?: boolean };
+/** The extension point for qualifying actions. Decisions and rolls never earn a streak day.
+ * A roulette `played` earns a day only for an untouched game; it still counts toward games discovered.
+ */
 export const QUALIFYING_ACTIONS: Readonly<Record<string, Action>> = Object.freeze({
-  played: { played: true },
+  played: { played: true, untouchedOnly: true },
   daily_played: { played: true },
   friend_night_played: { played: true },
   challenge_complete: { challenge: true },
-  rare_challenge_complete: { challenge: true, rare: true },
 });
 
 const ordinal = (day: string) => Date.parse(`${day}T00:00:00Z`) / 86_400_000;
@@ -46,15 +47,16 @@ export function calculateProgression(events: Iterable<ProgressionEvent>, tz: str
     seen.add(event.id);
     const action = Object.hasOwn(QUALIFYING_ACTIONS, event.type) ? QUALIFYING_ACTIONS[event.type] : undefined;
     if (!action) continue;
-    days.add(localDate(event.at, tz));
+    const untouched = event.meta?.playtimeAtRoll === 0;
+    if (!action.untouchedOnly || untouched) days.add(localDate(event.at, tz));
     if (action.played && event.appid !== undefined) {
       discovered.add(event.appid);
-      if (event.meta?.playtimeAtRoll === 0) started.add(event.appid);
+      if (untouched) started.add(event.appid);
     }
     if (action.challenge) {
       const identity = event.refId ?? event.id;
       challenges.add(identity);
-      if (action.rare || event.meta?.kind === 'rare') rare.add(identity);
+      if (event.meta?.kind === 'rare') rare.add(identity);
     }
   }
   const ordered = [...days].sort();

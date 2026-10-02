@@ -5,7 +5,7 @@ import type { StatsSummaryRecord } from '../store/types';
 import type { EventInput } from './events';
 import { runTransaction } from '../store/tx';
 import { isValidTimeZone, localDate } from './time';
-import { calculateProgression, type Progression, type ProgressionEvent } from './progression';
+import { calculateProgression, QUALIFYING_ACTIONS, type Progression, type ProgressionEvent } from './progression';
 
 // The only writer of `users/{id}/stats/summary`. Counters move only as a side effect of `recordEvent`, in the
 // same transaction as the event, so they never drift from the event log. Increments are blind merge writes,
@@ -61,7 +61,7 @@ export async function readStats(steamId: string, now = Date.now()): Promise<Stat
     if (cached?.revision === revision && cached?.tz === tz && cached?.day === day && cached?.at <= now && (cached?.nextEventAt === null || now < cached?.nextEventAt)) {
       progression = cached.value as Progression;
     } else {
-      const snapshots = await tx.get(db.collection(paths.events(steamId)));
+      const snapshots = await tx.get(db.collection(paths.events(steamId)).where('type', 'in', Object.keys(QUALIFYING_ACTIONS)));
       const events: ProgressionEvent[] = snapshots.docs.flatMap(doc => {
         const event = doc.data();
         return event.at instanceof Timestamp ? [{ ...event, id: doc.id, at: event.at.toMillis() } as ProgressionEvent] : [];

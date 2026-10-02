@@ -30,16 +30,16 @@ describe('profile timezone and personal stats routes', () => {
   });
   it('rejects foreign origins and malformed settings before writing', async () => {
     expect((await PATCH(request({ tz: 'UTC' }, 'https://evil.test'))).status).toBe(403);
-    for (const body of [null, {}, { tz: 'No/Zone' }, { tz: 'UTC', onlyIfMissing: 'true' }]) {
+    for (const body of [null, {}, { tz: 'No/Zone' }, { tz: 42 }]) {
       expect((await PATCH(request(body))).status).toBe(400);
     }
     expect(save).not.toHaveBeenCalled();
   });
   it('saves only the session user setting with private responses', async () => {
-    const response = await PATCH(request({ tz: 'America/Los_Angeles', onlyIfMissing: true, steamId: 'someone-else' }));
+    const response = await PATCH(request({ tz: 'America/Los_Angeles', steamId: 'someone-else' }));
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
-    expect(save).toHaveBeenCalledWith(await auth(), 'America/Los_Angeles', true);
+    expect(save).toHaveBeenCalledWith(await auth(), 'America/Los_Angeles');
     expect(await response.json()).toEqual({ tz: 'America/Los_Angeles' });
   });
   it('returns only the authenticated user stats', async () => {

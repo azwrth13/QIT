@@ -19,8 +19,17 @@ describe('personal progression', () => {
   });
 
   it('counts future-package play kinds but never future timestamps', () => {
-    const events = [event('a', '2026-01-01T12:00Z', 'daily_played'), event('b', '2026-01-02T12:00Z', 'friend_night_played'), event('c', '2026-01-03T12:00Z', 'rare_challenge_complete')];
-    expect(calculateProgression(events, 'UTC', Date.parse('2026-01-02T14:00Z'))).toMatchObject({ current: 2, longest: 2, challengesCompleted: 0 });
+    const events = [event('a', '2026-01-01T12:00Z', 'daily_played'), event('b', '2026-01-02T12:00Z', 'friend_night_played'), event('c', '2026-01-03T12:00Z', 'challenge_complete', { meta: { kind: 'rare' } })];
+    expect(calculateProgression(events, 'UTC', Date.parse('2026-01-02T14:00Z'))).toMatchObject({ current: 2, longest: 2, challengesCompleted: 0, rareAchievementsCompleted: 0 });
+  });
+
+  it('credits a played roll only for an untouched game, while still counting it as discovered', () => {
+    const now = Date.parse('2026-01-01T14:00Z');
+    const touched = event('a', '2026-01-01T12:00Z', 'played', { appid: 10, meta: { playtimeAtRoll: 3000 } });
+    const unknown = event('b', '2026-01-01T12:00Z', 'played', { appid: 11 });
+    expect(calculateProgression([touched, unknown], 'UTC', now)).toMatchObject({ current: 0, longest: 0, gamesDiscovered: 2, backlogGamesStarted: 0 });
+    const untouched = event('c', '2026-01-01T13:00Z', 'played', { appid: 12, meta: { playtimeAtRoll: 0 } });
+    expect(calculateProgression([touched, untouched], 'UTC', now)).toMatchObject({ current: 1, gamesDiscovered: 2, backlogGamesStarted: 1 });
   });
 
 });
