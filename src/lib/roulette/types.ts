@@ -241,7 +241,7 @@ export interface ScopeResult {
 
 export interface ScopeResolver<K extends ScopeKind = ScopeKind> {
   kind: K;
-  resolve(scope: Extract<Scope, { kind: K }>, ctx: { steamId: string; now: number }): Promise<ScopeResult>;
+  resolve(scope: Extract<Scope, { kind: K }>, ctx: { steamId: string; now: number; fetch?: boolean }): Promise<ScopeResult>;
 }
 
 export interface SpinRequest {

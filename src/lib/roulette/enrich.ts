@@ -8,6 +8,7 @@ import type { LoadContext, SignalLoaders } from './pipeline';
 import { storeSignalsFromBits } from './scopes/library';
 import { THRESHOLDS } from './thresholds';
 import type { Candidate } from './types';
+import { loadLive } from './live';
 
 // Signal loaders for the spin pipeline. `library` comes from the scope resolver, and the library scope also attaches
 // `store` and `achievements` from the library index. Here:
@@ -16,8 +17,8 @@ import type { Candidate } from './types';
 // - `store`: bounded enrichment for games whose store flags are not known yet, through app-metadata's writers so the
 //   answers are cached for the next spin. Pool previews (`fetch: false`) never call Steam.
 //
-// `achievements`, `live` and `group` have no loader yet: their packages (qit-achievements-data, qit-player-counts,
-// the group scopes) add one here. Until then those signals are unknown and `coverage` says so.
+// `live`: bounded current-player refresh and pool-relative bands. Group signals come from group scopes.
+// `achievements` has no loader yet; missing signals remain unknown and coverage reports them.
 
 /** Apps sent to Steam's GetItems per spin: 100 per call, so at most 5 calls, which run at once (concurrency 5). */
 export const STORE_ENRICH_MAX_APPS = 500;
@@ -83,4 +84,5 @@ async function loadStore(candidates: Candidate[], ctx: LoadContext): Promise<voi
 export const SIGNAL_LOADERS: SignalLoaders = {
   history: loadHistory,
   store: loadStore,
+  live: loadLive,
 };

@@ -19,7 +19,10 @@ export interface SpinScopeResult extends ScopeResult {
 }
 
 /** A scope resolver, plus the signal families it attaches to its candidates besides `library`. */
-export type SpinScopeResolver<K extends ScopeKind = ScopeKind> = ScopeResolver<K> & { provides?: readonly SignalFamily[] };
+export type SpinScopeResolver<K extends ScopeKind = ScopeKind> = Omit<ScopeResolver<K>, 'resolve'> & {
+  provides?: readonly SignalFamily[];
+  resolve(scope: Extract<Scope, { kind: K }>, ctx: { steamId: string; now: number; fetch?: boolean }): Promise<SpinScopeResult>;
+};
 export type ScopeResolvers = { [K in ScopeKind]?: SpinScopeResolver<K> };
 
 export interface LoadContext {
@@ -117,12 +120,12 @@ export function unsourcedSelection(request: Pick<ParsedSpinRequest, 'mode' | 'fi
   return filter ? `filter ${filter.filter.id}` : null;
 }
 
-async function resolveScope(request: ParsedSpinRequest, steamId: string, now: number, deps: PipelineDeps): Promise<SpinScopeResult> {
+async function resolveScope(request: ParsedSpinRequest, steamId: string, now: number, deps: PipelineDeps, fetch: boolean): Promise<SpinScopeResult> {
   const resolver = deps.resolvers[request.scope.kind] as ScopeResolver | undefined;
   if (!resolver) throw new SpinInputError(`scope ${request.scope.kind} is not available yet`);
   const unsourced = unsourcedSelection(request, sourcedFamilies(deps, request.scope.kind));
   if (unsourced) throw new SpinInputError(`${unsourced} is not available for scope ${request.scope.kind}`);
-  const result: SpinScopeResult = await resolver.resolve(request.scope, { steamId, now });
+  const result: SpinScopeResult = await resolver.resolve(request.scope, { steamId, now, fetch });
   if (result.playtimeHidden) {
     const blocked = request.filters.find(({ filter }) => PLAYTIME_FILTERS.includes(filter.id));
     if (blocked) throw new SpinInputError(`filter ${blocked.filter.id} needs playtime, which this Steam profile hides`);
@@ -145,7 +148,7 @@ interface Pool {
 
 /** Resolve, load what the exclusion stage and filters read, then apply them. */
 async function buildPool(steamId: string, request: ParsedSpinRequest, deps: PipelineDeps, now: number, fetch: boolean): Promise<Pool> {
-  const scope = await resolveScope(request, steamId, now, deps);
+  const scope = await resolveScope(request, steamId, now, deps, fetch);
   const stages: PoolStages = { exclusions: { exclude: request.exclude, showNonGames: request.showNonGames }, filters: request.filters };
   const stageFamilies = requiredFamilies(stages);
   const ctx: LoadContext = { steamId, scope: request.scope, now, sessionId: request.sessionId, filters: request.filters, fetch };
