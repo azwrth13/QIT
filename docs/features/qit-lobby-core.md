@@ -103,7 +103,9 @@ rollout packages.
 The client polls every 2 seconds when visible and every 8 seconds when hidden,
 starting immediately and on return to a visible tab. It uses sequential requests,
 aborts on unmount, treats HTTP 304 as unchanged, and ignores responses older
-than the latest mutation response. Poll failures display a message and retry.
+than the latest mutation response. Poll failures display a message and retry;
+a successful poll clears only its own error, so mutation failures stay visible
+until the next mutation attempt.
 Library data stays cached until membership next changes.
 
 ## Validation
