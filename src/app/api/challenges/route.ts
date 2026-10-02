@@ -8,7 +8,7 @@ import { logServerError } from '@/lib/steam';
 import { SteamClientError } from '@/lib/steam/client';
 
 // GET   /api/challenges?status=active|all&limit=&cursor=   the signed-in user's challenges, newest first
-// POST  /api/challenges { kind, appid, apiname?, threshold?, count? }   issue a challenge
+// POST  /api/challenges { kind, appid, apiname, threshold? }   issue a challenge
 // PATCH /api/challenges { challengeId, action }   action: accept | decline | verify
 
 const readLimits = { user: createLimiter({ capacity: 30, refillPerSecond: 1 }), ip: createLimiter({ capacity: 120, refillPerSecond: 4 }) };
@@ -26,11 +26,12 @@ const conflict = (challenge: ChallengeView) =>
   jsonResponse({ error: { code: 'conflict', message: `Challenge is already ${challenge.status}` }, challenge }, 409);
 const issueRefusal = (code: string, message: string) => jsonResponse({ error: { code, message } }, 409);
 
-const ISSUE_MESSAGES: Record<Exclude<IssueResult['outcome'], 'created' | 'existing' | 'not_owned'>, string> = {
+const ISSUE_MESSAGES: Record<Exclude<IssueResult['outcome'], 'created' | 'existing' | 'conflict' | 'not_owned'>, string> = {
   needs_sync: 'Sync your library first, then try again.',
   private: 'Steam is not sharing your achievements. Set Game details to Public in your Steam privacy settings, then try again.',
   no_achievements: 'This game has no achievements on Steam.',
-  not_locked: 'That achievement is not locked for you, or the game does not have enough locked achievements.',
+  not_locked: 'That achievement is not locked for you.',
+  not_rare: 'That achievement is not rare enough for this tier on Steam, or Steam has no global unlock data for this game.',
   limit: 'You have too many open challenges. Finish or decline one first.',
 };
 const PRIVATE_MESSAGE = ISSUE_MESSAGES.private;
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
   let input: ChallengeInput;
   try {
     input = validateChallengeInput({
-      kind: body.kind, appid: body.appid, apiname: body.apiname, threshold: body.threshold, count: body.count,
+      kind: body.kind, appid: body.appid, apiname: body.apiname, threshold: body.threshold,
     } as ChallengeInput);
   } catch (error) {
     return errorResponse('invalid', error instanceof Error ? error.message : 'Invalid challenge');
@@ -89,6 +90,9 @@ export async function POST(req: Request) {
   }
   if (result.outcome === 'created' || result.outcome === 'existing') {
     return jsonResponse({ outcome: result.outcome, challenge: result.challenge }, result.outcome === 'created' ? 201 : 200);
+  }
+  if (result.outcome === 'conflict') {
+    return jsonResponse({ error: { code: 'conflict', message: 'That achievement already has an open challenge.' }, challenge: result.challenge }, 409);
   }
   if (result.outcome === 'not_owned') return notFound('That game is not in your library', 'not_owned');
   return issueRefusal(result.outcome, ISSUE_MESSAGES[result.outcome]);

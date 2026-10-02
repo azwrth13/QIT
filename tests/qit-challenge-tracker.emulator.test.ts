@@ -28,11 +28,22 @@ const answer = (achievements: Ach[]): Answer => ({ status: 200, body: { playerst
 const privateStats: Answer = { status: 403, body: { playerstats: { success: false, error: 'Profile is not public' } } };
 const noStats: Answer = { status: 400, body: { playerstats: { success: false, error: 'Requested app has no stats' } } };
 
-/** A fake Steam whose GetPlayerAchievements answer per appid can change between calls. */
-function fakeSteam(answers: Record<number, Answer>) {
+/**
+ * A fake Steam whose GetPlayerAchievements answer per appid can change between calls, and whose global unlock
+ * percentages per appid come from `percents` (an app missing there has no stats).
+ */
+function fakeSteam(answers: Record<number, Answer>, percents: Record<number, Record<string, number>>) {
   const calls: number[] = [];
+  const rarityCalls: number[] = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input));
+    if (url.pathname.includes('GetGlobalAchievementPercentagesForApp')) {
+      const appid = Number(url.searchParams.get('gameid'));
+      rarityCalls.push(appid);
+      const known = percents[appid];
+      if (!known) return Response.json({}, { status: 403 });
+      return Response.json({ achievementpercentages: { achievements: Object.entries(known).map(([name, percent]) => ({ name, percent: String(percent) })) } });
+    }
     if (!url.pathname.includes('GetPlayerAchievements')) throw new Error('Unexpected request');
     const appid = Number(url.searchParams.get('appid'));
     calls.push(appid);
@@ -40,20 +51,20 @@ function fakeSteam(answers: Record<number, Answer>) {
     if (!reply) return Response.json({}, { status: 500 });
     return Response.json(reply.body, { status: reply.status });
   });
-  return { calls, answers, client: createSteamClient({ fetch: fetchMock as unknown as typeof fetch, sleep: async () => {}, retries: 0 }) };
+  return { calls, rarityCalls, answers, client: createSteamClient({ fetch: fetchMock as unknown as typeof fetch, sleep: async () => {}, retries: 0 }) };
 }
 
 const listEvents = async (steamId: string) =>
   (await db.collection(paths.events(steamId)).orderBy('at', 'asc').get()).docs.map(doc => doc.data());
 
-/** A user owning Portal 2 (620, two locked of three) and Steam (7, no stats). */
+/** A user owning Portal 2 (620, two locked of three; B is 8% globally, C 3%) and Steam (7, no stats). */
 async function setup(answers: Record<number, Answer> = {}) {
   const steamId = freshUser();
   await patchLibIndex(steamId, { 620: { n: 'Portal 2', p: 600 }, 7: { n: 'Steam', p: 0 } }, { create: true });
   const steam = fakeSteam({
     620: answer([{ apiname: 'A', achieved: true }, { apiname: 'B', achieved: false }, { apiname: 'C', achieved: false }]),
     ...answers,
-  });
+  }, { 620: { A: 80, B: 8, C: 3 } });
   return { steamId, steam };
 }
 
@@ -74,17 +85,18 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
     const challenge = await issued(steamId, steam.client);
     expect(challenge).toMatchObject({
       kind: 'achievement', appid: 620, name: 'Portal 2', apiname: 'B', achievementName: 'Name B', achievementDescription: 'Do B',
-      status: 'issued', count: 1, acceptedAt: null, threshold: null,
+      status: 'issued', acceptedAt: null, threshold: null,
     });
     expect(challenge.expiresAt.getTime()).toBe(NOW + CHALLENGE_TTL_MS.offer);
     expect(await getChallenge(steamId, challenge.id)).toEqual(challenge);
     // The Steam answer was stored through the achievements data, so a second issue costs no call.
     expect((await readAchievementRecord(steamId, 620))?.progress).toEqual({ unlocked: 1, total: 3, percent: 33 });
-    await issued(steamId, steam.client, { kind: 'any', appid: 620, count: 2 });
+    await issued(steamId, steam.client, { kind: 'achievement', appid: 620, apiname: 'C' });
     expect(steam.calls).toEqual([620]);
+    expect(steam.rarityCalls).toEqual([]);
     const events = await listEvents(steamId);
     expect(events.map(event => [event.type, event.refId, event.meta])).toEqual([
-      ['challenge_issue', challenge.id, { kind: 'achievement' }], ['challenge_issue', expect.any(String), { kind: 'any' }],
+      ['challenge_issue', challenge.id, { kind: 'achievement' }], ['challenge_issue', expect.any(String), { kind: 'achievement' }],
     ]);
   });
 
@@ -95,14 +107,52 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
     expect((await issue({ kind: 'achievement', appid: 7, apiname: 'B' })).outcome).toBe('no_achievements');
     expect((await issue({ kind: 'achievement', appid: 620, apiname: 'A' })).outcome).toBe('not_locked');
     expect((await issue({ kind: 'achievement', appid: 620, apiname: 'Z' })).outcome).toBe('not_locked');
-    expect((await issue({ kind: 'any', appid: 620, count: 3 })).outcome).toBe('not_locked');
-    const first = await issue(target);
-    const again = await issue(target);
-    expect(again.outcome).toBe('existing');
-    expect(again.outcome === 'existing' && again.challenge.id).toBe(first.outcome === 'created' && first.challenge.id);
-    // A rare challenge for the same achievement is a different challenge.
-    expect((await issue({ kind: 'rare', appid: 620, apiname: 'B', threshold: 10 })).outcome).toBe('created');
     expect((await issueChallenge(freshUser(), target, { now: NOW, client: steam.client })).outcome).toBe('needs_sync');
+  });
+
+  it('lets one achievement back at most one active challenge, whatever its kind', async () => {
+    const { steamId, steam } = await setup();
+    const issue = (input: ChallengeInput) => issueChallenge(steamId, input, { now: NOW, client: steam.client });
+    const first = await issued(steamId, steam.client);
+    const rare = await issued(steamId, steam.client, { kind: 'rare', appid: 620, apiname: 'C', threshold: 5 });
+    const callsBefore = [steam.calls.length, steam.rarityCalls.length];
+    // The same request returns the open challenge; any other request on that achievement is a conflict.
+    expect(await issue(target)).toMatchObject({ outcome: 'existing', challenge: { id: first.id } });
+    expect(await issue({ kind: 'rare', appid: 620, apiname: 'B', threshold: 10 })).toMatchObject({ outcome: 'conflict', challenge: { id: first.id } });
+    expect(await issue({ kind: 'rare', appid: 620, apiname: 'C', threshold: 5 })).toMatchObject({ outcome: 'existing', challenge: { id: rare.id } });
+    expect(await issue({ kind: 'rare', appid: 620, apiname: 'C', threshold: 25 })).toMatchObject({ outcome: 'conflict', challenge: { id: rare.id } });
+    expect(await issue({ kind: 'achievement', appid: 620, apiname: 'C' })).toMatchObject({ outcome: 'conflict', challenge: { id: rare.id } });
+    // The pre-check answers before any Steam call.
+    expect([steam.calls.length, steam.rarityCalls.length]).toEqual(callsBefore);
+    // Once the challenge is closed, the achievement is free again.
+    await declineChallenge(steamId, first.id, NOW + 1);
+    expect((await issue({ kind: 'rare', appid: 620, apiname: 'B', threshold: 10 })).outcome).toBe('created');
+  });
+
+  it('dedupes racing issues for one achievement in the transaction', async () => {
+    const { steamId, steam } = await setup();
+    const issue = (input: ChallengeInput) => issueChallenge(steamId, input, { now: NOW, client: steam.client });
+    const rareC: ChallengeInput = { kind: 'rare', appid: 620, apiname: 'C', threshold: 5 };
+    const same = await Promise.all([issue(rareC), issue(rareC)]);
+    expect(same.map(result => result.outcome).sort()).toEqual(['created', 'existing']);
+    const different = await Promise.all([issue(target), issue({ kind: 'rare', appid: 620, apiname: 'B', threshold: 10 })]);
+    expect(different.map(result => result.outcome).sort()).toEqual(['conflict', 'created']);
+    const active = (await listChallenges(steamId, { status: 'active', now: NOW })).challenges;
+    expect(active.map(challenge => challenge.apiname).sort()).toEqual(['B', 'C']);
+    expect((await listEvents(steamId)).filter(event => event.type === 'challenge_issue')).toHaveLength(2);
+  });
+
+  it('issues a rare challenge only when Steam\'s global unlock percent is at or below the tier', async () => {
+    const { steamId, steam } = await setup();
+    const issue = (input: ChallengeInput) => issueChallenge(steamId, input, { now: NOW, client: steam.client });
+    // B is unlocked by 8% of players: not rare enough for the 5% tier.
+    expect((await issue({ kind: 'rare', appid: 620, apiname: 'B', threshold: 5 })).outcome).toBe('not_rare');
+    expect(await issue({ kind: 'rare', appid: 620, apiname: 'B', threshold: 10 })).toMatchObject({ outcome: 'created', challenge: { kind: 'rare', threshold: 10 } });
+    // A game without global stats on Steam cannot back a rare challenge.
+    await patchLibIndex(steamId, { 440: { n: 'Team Fortress 2', p: 0 } }, { create: true });
+    steam.answers[440] = answer([{ apiname: 'X', achieved: false }]);
+    expect((await issue({ kind: 'rare', appid: 440, apiname: 'X', threshold: 25 })).outcome).toBe('not_rare');
+    expect(steam.rarityCalls).toEqual([620, 620, 440]);
   });
 
   it('caps the open challenges per user, counting overdue ones as closed', async () => {
@@ -160,23 +210,21 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
     });
   });
 
-  it('completes an any-achievement challenge on enough new unlocks, and a rare one with its threshold', async () => {
+  it('completes a rare challenge with its threshold, and only the challenge on the unlocked achievement', async () => {
     const { steamId, steam } = await setup();
-    const any = await issued(steamId, steam.client, { kind: 'any', appid: 620, count: 2 });
+    const hunt = await issued(steamId, steam.client);
     const rare = await issued(steamId, steam.client, { kind: 'rare', appid: 620, apiname: 'C', threshold: 5 });
-    await acceptChallenge(steamId, any.id, NOW + 1000);
-    await acceptChallenge(steamId, rare.id, NOW + 1000);
+    await acceptChallenge(steamId, hunt.id, NOW + 1000);
+    const accepted = await acceptChallenge(steamId, rare.id, NOW + 1000);
+    expect(accepted.outcome !== 'not_found' && accepted.challenge.expiresAt.getTime()).toBe(NOW + 1000 + CHALLENGE_TTL_MS.rare);
     const at = sec(NOW + 1000);
-    steam.answers[620] = answer([{ apiname: 'A', achieved: true, unlocktime: at - 100 }, { apiname: 'B', achieved: true, unlocktime: at + 10 }, { apiname: 'C', achieved: false }]);
-    expect(await verifyChallenge(steamId, any.id, { now: NOW + 5000, client: steam.client })).toMatchObject({ outcome: 'pending', progress: { unlocked: 1, required: 2 } });
-    steam.answers[620] = answer([{ apiname: 'A', achieved: true, unlocktime: at - 100 }, { apiname: 'B', achieved: true, unlocktime: at + 10 }, { apiname: 'C', achieved: true, unlocktime: at + 20 }]);
-    const anyDone = await verifyChallenge(steamId, any.id, { now: NOW + 6000, client: steam.client });
-    expect(anyDone.outcome === 'updated' && anyDone.challenge.unlocks).toEqual([{ apiname: 'B', unlocktime: at + 10 }, { apiname: 'C', unlocktime: at + 20 }]);
-    expect((await verifyChallenge(steamId, rare.id, { now: NOW + 7000, client: steam.client })).outcome).toBe('updated');
-    const counters = (await readStats(steamId)).counters;
-    expect(counters).toMatchObject({ challenge_complete: 2, 'challenge_complete:kind:any': 1, 'challenge_complete:kind:rare': 1 });
+    steam.answers[620] = answer([{ apiname: 'A', achieved: true, unlocktime: at - 100 }, { apiname: 'B', achieved: false }, { apiname: 'C', achieved: true, unlocktime: at + 20 }]);
+    expect(await verifyChallenge(steamId, hunt.id, { now: NOW + 5000, client: steam.client })).toMatchObject({ outcome: 'pending', progress: { unlocked: 0, required: 1 } });
+    const done = await verifyChallenge(steamId, rare.id, { now: NOW + 6000, client: steam.client });
+    expect(done.outcome === 'updated' && done.challenge.unlocks).toEqual([{ apiname: 'C', unlocktime: at + 20 }]);
+    expect((await readStats(steamId)).counters).toMatchObject({ challenge_complete: 1, 'challenge_complete:kind:rare': 1 });
     expect((await listEvents(steamId)).filter(event => event.type === 'challenge_complete').map(event => event.meta))
-      .toEqual(expect.arrayContaining([{ kind: 'any', unlocks: 2 }, { kind: 'rare', threshold: 5, unlocks: 1 }]));
+      .toEqual([{ kind: 'rare', threshold: 5, unlocks: 1 }]);
   });
 
   it('completes once when verify calls race', async () => {
@@ -195,7 +243,7 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
   it('declines an issued challenge and rejects every illegal transition', async () => {
     const { steamId, steam } = await setup();
     const a = await issued(steamId, steam.client);
-    const b = await issued(steamId, steam.client, { kind: 'any', appid: 620 });
+    const b = await issued(steamId, steam.client, { kind: 'achievement', appid: 620, apiname: 'C' });
 
     // Verify before acceptance is illegal: nothing is fetched or completed.
     steam.calls.length = 0;
@@ -222,9 +270,9 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
   });
 
   it('expires lapsed offers and attempts on the next touch, list or sweep', async () => {
-    const { steamId, steam } = await setup();
+    const { steamId, steam } = await setup({ 620: answer([{ apiname: 'B', achieved: false }, { apiname: 'C', achieved: false }, { apiname: 'D', achieved: false }]) });
     const offer = await issued(steamId, steam.client);
-    const attempt = await issued(steamId, steam.client, { kind: 'any', appid: 620 });
+    const attempt = await issued(steamId, steam.client, { kind: 'achievement', appid: 620, apiname: 'D' });
     const swept = await issued(steamId, steam.client, { kind: 'rare', appid: 620, apiname: 'C', threshold: 25 });
     await acceptChallenge(steamId, attempt.id, NOW + 1000);
     await acceptChallenge(steamId, swept.id, NOW + 1000);
@@ -235,9 +283,9 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
     expect((await getChallenge(steamId, offer.id))?.expiredAt?.getTime()).toBe(lapsed);
 
     // A verify after the attempt window expires it without asking Steam, even if the unlock is there.
-    steam.answers[620] = answer([{ apiname: 'B', achieved: true, unlocktime: sec(NOW) + 10 }]);
+    steam.answers[620] = answer([{ apiname: 'D', achieved: true, unlocktime: sec(NOW) + 10 }]);
     steam.calls.length = 0;
-    const late = NOW + 1000 + CHALLENGE_TTL_MS.any;
+    const late = NOW + 1000 + CHALLENGE_TTL_MS.achievement;
     expect(await verifyChallenge(steamId, attempt.id, { now: late, client: steam.client })).toMatchObject({ outcome: 'conflict', challenge: { status: 'expired' } });
     expect(steam.calls).toEqual([]);
     expect(await expireChallenge(steamId, attempt.id, late + 1)).toMatchObject({ outcome: 'unchanged', challenge: { status: 'expired' } });
@@ -265,13 +313,13 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
     expect((await verifyChallenge(steamId, challenge.id, { now: NOW + 3000, client: steam.client })).outcome).toBe('private');
     expect(steam.calls).toEqual([620]);
     // Issuing for another game while private is refused without a call as well.
-    expect((await issueChallenge(steamId, { kind: 'any', appid: 7 }, { now: NOW + 4000, client: steam.client })).outcome).toBe('private');
+    expect((await issueChallenge(steamId, { kind: 'achievement', appid: 7, apiname: 'B' }, { now: NOW + 4000, client: steam.client })).outcome).toBe('private');
     expect(steam.calls).toEqual([620]);
   });
 
   it('lists every challenge newest first with paging', async () => {
-    const { steamId, steam } = await setup();
-    const inputs: ChallengeInput[] = [target, { kind: 'any', appid: 620 }, { kind: 'rare', appid: 620, apiname: 'C', threshold: 25 }];
+    const { steamId, steam } = await setup({ 620: answer([{ apiname: 'B', achieved: false }, { apiname: 'C', achieved: false }, { apiname: 'D', achieved: false }]) });
+    const inputs: ChallengeInput[] = [target, { kind: 'achievement', appid: 620, apiname: 'D' }, { kind: 'rare', appid: 620, apiname: 'C', threshold: 25 }];
     const ids: string[] = [];
     for (const [i, input] of inputs.entries()) ids.push((await issued(steamId, steam.client, input, NOW + i)).id);
     // Give two challenges the same issue time to exercise the id tiebreak.

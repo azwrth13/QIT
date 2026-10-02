@@ -44,20 +44,17 @@ describe('challenge state machine', () => {
 });
 
 describe('validateChallengeInput', () => {
-  it('accepts the three kinds and normalizes them', () => {
+  it('accepts the two kinds and normalizes them', () => {
     expect(validateChallengeInput({ kind: 'achievement', appid: 620, apiname: 'ACH_X' })).toEqual({ kind: 'achievement', appid: 620, apiname: 'ACH_X' });
     expect(validateChallengeInput({ kind: 'rare', appid: 620, apiname: 'ACH_X', threshold: 5 })).toEqual({ kind: 'rare', appid: 620, apiname: 'ACH_X', threshold: 5 });
-    expect(validateChallengeInput({ kind: 'any', appid: 620 })).toEqual({ kind: 'any', appid: 620, count: 1 });
-    expect(validateChallengeInput({ kind: 'any', appid: 620, count: 50 })).toEqual({ kind: 'any', appid: 620, count: 50 });
   });
 
   it('rejects malformed input', () => {
     const bad: unknown[] = [
-      null, {}, { kind: 'hunt', appid: 620 }, { kind: 'any', appid: '620' }, { kind: 'any', appid: 0 }, { kind: 'any', appid: 1.5 },
-      { kind: 'any', appid: 620, count: 0 }, { kind: 'any', appid: 620, count: 51 }, { kind: 'any', appid: 620, count: 1.5 },
-      { kind: 'any', appid: 620, apiname: 'X' }, { kind: 'any', appid: 620, threshold: 5 },
+      null, {}, { kind: 'hunt', appid: 620, apiname: 'X' }, { kind: 'any', appid: 620 }, { kind: 'any', appid: 620, apiname: 'X' },
+      { kind: 'achievement', appid: '620', apiname: 'X' }, { kind: 'achievement', appid: 0, apiname: 'X' }, { kind: 'achievement', appid: 1.5, apiname: 'X' },
       { kind: 'achievement', appid: 620 }, { kind: 'achievement', appid: 620, apiname: '' }, { kind: 'achievement', appid: 620, apiname: 'x'.repeat(129) },
-      { kind: 'achievement', appid: 620, apiname: 'X', threshold: 5 }, { kind: 'achievement', appid: 620, apiname: 'X', count: 2 },
+      { kind: 'achievement', appid: 620, apiname: 'X', threshold: 5 },
       { kind: 'rare', appid: 620, apiname: 'X' }, { kind: 'rare', appid: 620, apiname: 'X', threshold: 50 },
     ];
     for (const input of bad) expect(() => validateChallengeInput(input as never), JSON.stringify(input)).toThrow();
@@ -65,7 +62,7 @@ describe('validateChallengeInput', () => {
 });
 
 describe('challenge verification rules', () => {
-  const targeted = { kind: 'achievement' as const, apiname: 'B', count: 1, acceptedAt: new Date(ACCEPTED) };
+  const targeted = { apiname: 'B', acceptedAt: new Date(ACCEPTED) };
 
   it('counts an unlock only at or after the acceptance second', () => {
     expect(evaluateChallenge(targeted, [unlocked('B', acceptedSecond - 1)])).toMatchObject({ met: false, progress: { unlocked: 0, required: 1 } });
@@ -85,14 +82,9 @@ describe('challenge verification rules', () => {
     expect(evaluateChallenge({ ...targeted, acceptedAt: null }, [unlocked('B', acceptedSecond + 1)])).toEqual({ met: false, progress: { unlocked: 0, required: 1 }, unlocks: [] });
   });
 
-  it('needs `count` new unlocks for an any-achievement challenge, reporting the earliest', () => {
-    const any = { kind: 'any' as const, apiname: null, count: 2, acceptedAt: new Date(ACCEPTED) };
-    const achievements = [unlocked('A', acceptedSecond - 10), unlocked('C', acceptedSecond + 30), unlocked('B', acceptedSecond + 20), unlocked('D', acceptedSecond + 40)];
-    expect(evaluateChallenge(any, achievements.slice(0, 2))).toMatchObject({ met: false, progress: { unlocked: 1, required: 2 } });
-    expect(evaluateChallenge(any, achievements)).toEqual({
-      met: true, progress: { unlocked: 2, required: 2 }, unlocks: [{ apiname: 'B', unlocktime: acceptedSecond + 20 }, { apiname: 'C', unlocktime: acceptedSecond + 30 }],
-    });
-    expect(qualifyingUnlocks(any, achievements, ACCEPTED).map(unlock => unlock.apiname)).toEqual(['B', 'C', 'D']);
+  it('takes only the target achievement from a full game answer', () => {
+    const achievements = [unlocked('A', acceptedSecond + 10), unlocked('B', acceptedSecond + 20), unlocked('C', acceptedSecond + 30)];
+    expect(qualifyingUnlocks(targeted, achievements, ACCEPTED)).toEqual([{ apiname: 'B', unlocktime: acceptedSecond + 20 }]);
   });
 
   it('counts completions per kind in the stats summary', () => {
@@ -110,17 +102,17 @@ describe('toChallengeView', () => {
       kind: 'rare', appid: 620, name: 'Portal 2', apiname: 'B', achievementName: 'Bee', threshold: 10, status: 'completed', issuedAt, expiresAt,
       acceptedAt: issuedAt, completedAt: expiresAt, unlocks: [{ apiname: 'B', unlocktime: 5 }, { apiname: 7 }],
     })).toEqual({
-      id: 'c1', kind: 'rare', appid: 620, name: 'Portal 2', apiname: 'B', achievementName: 'Bee', achievementDescription: null, threshold: 10, count: 1,
+      id: 'c1', kind: 'rare', appid: 620, name: 'Portal 2', apiname: 'B', achievementName: 'Bee', achievementDescription: null, threshold: 10,
       status: 'completed', issuedAt: issuedAt.toDate(), acceptedAt: issuedAt.toDate(), completedAt: expiresAt.toDate(), declinedAt: null, expiredAt: null,
       expiresAt: expiresAt.toDate(), unlocks: [{ apiname: 'B', unlocktime: 5 }],
     });
   });
 
   it('returns null for missing or malformed essentials', () => {
-    const base = { kind: 'any', appid: 620, status: 'issued', issuedAt, expiresAt };
-    expect(toChallengeView('c1', base)?.count).toBe(1);
+    const base = { kind: 'achievement', appid: 620, apiname: 'B', status: 'issued', issuedAt, expiresAt };
+    expect(toChallengeView('c1', base)?.apiname).toBe('B');
     expect(toChallengeView('c1', undefined)).toBeNull();
-    for (const broken of [{ kind: 'hunt' }, { status: 'done' }, { appid: '620' }, { issuedAt: 'yesterday' }, { expiresAt: null }]) {
+    for (const broken of [{ kind: 'any' }, { status: 'done' }, { appid: '620' }, { apiname: undefined }, { issuedAt: 'yesterday' }, { expiresAt: null }]) {
       expect(toChallengeView('c1', { ...base, ...broken })).toBeNull();
     }
   });
@@ -129,7 +121,7 @@ describe('toChallengeView', () => {
 describe('/api/challenges', () => {
   const challenge: ChallengeView = {
     id: 'c1', kind: 'achievement', appid: 620, name: 'Portal 2', apiname: 'B', achievementName: 'Bee', achievementDescription: null, threshold: null,
-    count: 1, status: 'accepted', issuedAt: new Date('2026-10-01T12:00:00Z'), acceptedAt: new Date('2026-10-01T12:01:00Z'), completedAt: null,
+    status: 'accepted', issuedAt: new Date('2026-10-01T12:00:00Z'), acceptedAt: new Date('2026-10-01T12:01:00Z'), completedAt: null,
     declinedAt: null, expiredAt: null, expiresAt: new Date('2026-10-08T12:01:00Z'), unlocks: [],
   };
   let ip = 0;
@@ -155,7 +147,7 @@ describe('/api/challenges', () => {
 
   it('requires a session before touching the store', async () => {
     getSteamId.mockResolvedValue(null);
-    const responses = [await get(), await send('POST', { kind: 'any', appid: 620 }), await send('PATCH', { challengeId: 'c1', action: 'verify' })];
+    const responses = [await get(), await send('POST', { kind: 'achievement', appid: 620, apiname: 'B' }), await send('PATCH', { challengeId: 'c1', action: 'verify' })];
     expect(responses.map(response => response.status)).toEqual([401, 401, 401]);
     for (const mock of mocks.slice(1)) expect(mock).not.toHaveBeenCalled();
   });
@@ -184,25 +176,29 @@ describe('/api/challenges', () => {
     expect(issueChallenge).toHaveBeenCalledWith(user, { kind: 'rare', appid: 620, apiname: 'B', threshold: 10 });
     issueChallenge.mockResolvedValue({ outcome: 'existing', challenge });
     expect((await send('POST', { kind: 'rare', appid: 620, apiname: 'B', threshold: 10 })).status).toBe(200);
+    issueChallenge.mockResolvedValue({ outcome: 'conflict', challenge });
+    const taken = await send('POST', { kind: 'rare', appid: 620, apiname: 'B', threshold: 5 });
+    expect(taken.status).toBe(409);
+    expect(await taken.json()).toMatchObject({ error: { code: 'conflict' }, challenge: { id: 'c1' } });
   });
 
   it('maps issue refusals to 404 and 409 with a code', async () => {
-    const cases = [['not_owned', 404], ['needs_sync', 409], ['private', 409], ['no_achievements', 409], ['not_locked', 409], ['limit', 409]] as const;
+    const cases = [['not_owned', 404], ['needs_sync', 409], ['private', 409], ['no_achievements', 409], ['not_locked', 409], ['not_rare', 409], ['limit', 409]] as const;
     for (const [outcome, status] of cases) {
       issueChallenge.mockResolvedValue({ outcome });
-      const response = await send('POST', { kind: 'any', appid: 620 });
+      const response = await send('POST', { kind: 'achievement', appid: 620, apiname: 'B' });
       expect(response.status).toBe(status);
       expect((await response.json()).error.code).toBe(outcome);
     }
   });
 
   it('rejects cross-site and malformed issues before touching the store', async () => {
-    expect((await send('POST', { kind: 'any', appid: 620 }, {})).status).toBe(403);
-    expect((await send('POST', { kind: 'any', appid: 620 }, { origin: 'https://evil.test' })).status).toBe(403);
-    for (const body of [null, [], {}, { kind: 'any', appid: '620' }, { kind: 'rare', appid: 620, apiname: 'B', threshold: 50 }]) {
+    expect((await send('POST', { kind: 'achievement', appid: 620, apiname: 'B' }, {})).status).toBe(403);
+    expect((await send('POST', { kind: 'achievement', appid: 620, apiname: 'B' }, { origin: 'https://evil.test' })).status).toBe(403);
+    for (const body of [null, [], {}, { kind: 'any', appid: 620 }, { kind: 'achievement', appid: '620', apiname: 'B' }, { kind: 'rare', appid: 620, apiname: 'B', threshold: 50 }]) {
       expect((await send('POST', body)).status).toBe(400);
     }
-    expect((await send('POST', { kind: 'any', appid: 620, pad: 'x'.repeat(2000) })).status).toBe(413);
+    expect((await send('POST', { kind: 'achievement', appid: 620, apiname: 'B', pad: 'x'.repeat(2000) })).status).toBe(413);
     expect(issueChallenge).not.toHaveBeenCalled();
   });
 

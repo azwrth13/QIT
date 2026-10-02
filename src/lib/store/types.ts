@@ -139,8 +139,8 @@ export interface DailyRecord {
   decidedAt?: Timestamp;
 }
 
-/** `achievement` and `rare` target one locked achievement; `any` asks for `count` new unlocks in the game. */
-export type ChallengeKind = 'achievement' | 'rare' | 'any';
+/** Both kinds target one locked achievement; `rare` adds a global unlock percent tier. */
+export type ChallengeKind = 'achievement' | 'rare';
 /** issued -> accepted -> completed | expired, issued -> declined | expired. */
 export type ChallengeStatus = 'issued' | 'accepted' | 'completed' | 'declined' | 'expired';
 
@@ -156,15 +156,13 @@ export interface ChallengeRecord {
   appid: number;
   /** Game name at issue time. */
   name?: string;
-  /** The target achievement (`achievement` and `rare`). */
-  apiname?: string;
+  /** The target achievement. */
+  apiname: string;
   achievementName?: string;
   /** Absent for hidden achievements, whose description Steam blanks. */
   achievementDescription?: string;
   /** Rare tier, a global unlock percent ceiling (`rare` only). */
   threshold?: number;
-  /** New unlocks needed (`any` only). */
-  count?: number;
   status: ChallengeStatus;
   issuedAt: Timestamp;
   acceptedAt?: Timestamp;

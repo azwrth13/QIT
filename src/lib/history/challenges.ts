@@ -7,6 +7,7 @@ import {
 import { logServerError } from '../steam';
 import { getPlayerAchievements, type PlayerAchievement } from '../steam/achievements';
 import type { SteamClient } from '../steam/client';
+import { getGlobalAchievementPercentages } from '../steam/rarity';
 import { readLibIndex } from '../store/lib-index';
 import { stripUndefined } from '../store/converters';
 import { appIdSegment, paths } from '../store/paths';
@@ -22,11 +23,12 @@ import { decodeRollCursor, encodeRollCursor } from './rolls';
 // `challenge_expire`), which is how streaks and stats learn about completions; nothing here touches the summary.
 //
 // Verification never trusts the client: it re-fetches that one game's achievements from Steam and counts an
-// achievement only when it is unlocked with an `unlocktime` at or after the acceptance time.
+// achievement only when it is unlocked with an `unlocktime` at or after the acceptance time. A rare tier is checked
+// against Steam's global unlock percentages at issue time.
 
-export const CHALLENGE_KINDS: readonly ChallengeKind[] = ['achievement', 'rare', 'any'];
+export const CHALLENGE_KINDS: readonly ChallengeKind[] = ['achievement', 'rare'];
 export const CHALLENGE_STATUSES: readonly ChallengeStatus[] = ['issued', 'accepted', 'completed', 'declined', 'expired'];
-/** Rare tiers (report section 2.4): global unlock percent below 25, 10 or 5. */
+/** Rare tiers (report section 2.4): global unlock percent at or below 25, 10 or 5. */
 export const RARE_THRESHOLDS: readonly number[] = [25, 10, 5];
 
 /** Every legal move. Anything else is rejected; `expired` is reached only once `expiresAt` has passed. */
@@ -45,14 +47,11 @@ const DAY = 24 * HOUR;
 export const CHALLENGE_TTL_MS = Object.freeze({
   offer: 3 * DAY,
   achievement: 7 * DAY,
-  any: 7 * DAY,
   rare: 14 * DAY,
 });
 
 /** Issued plus accepted challenges a user may hold at once. */
 export const MAX_ACTIVE_CHALLENGES = 20;
-/** Most new unlocks an `any` challenge can ask for. */
-export const MAX_CHALLENGE_COUNT = 50;
 export const MAX_CHALLENGES_PAGE = 50;
 /** Upper bound on the active challenges one expiry sweep reads (more than the cap, for overdue leftovers). */
 const ACTIVE_READ_LIMIT = 200;
@@ -74,12 +73,9 @@ export function canTransition(from: ChallengeStatus, to: ChallengeStatus): boole
 export interface ChallengeInput {
   kind: ChallengeKind;
   appid: number;
-  /** Target achievement for `achievement` and `rare`. */
-  apiname?: string;
+  apiname: string;
   /** Rare tier for `rare`, one of RARE_THRESHOLDS. */
   threshold?: number;
-  /** New unlocks needed for `any`; defaults to 1. */
-  count?: number;
 }
 
 export interface ChallengeView {
@@ -87,12 +83,10 @@ export interface ChallengeView {
   kind: ChallengeKind;
   appid: number;
   name: string | null;
-  apiname: string | null;
+  apiname: string;
   achievementName: string | null;
   achievementDescription: string | null;
   threshold: number | null;
-  /** New unlocks needed: 1 for a single-achievement challenge. */
-  count: number;
   status: ChallengeStatus;
   issuedAt: Date;
   acceptedAt: Date | null;
@@ -109,14 +103,7 @@ export function validateChallengeInput(input: ChallengeInput): ChallengeInput {
   if (!CHALLENGE_KINDS.includes(input.kind)) throw new Error('Invalid challenge kind');
   if (typeof input.appid !== 'number') throw new Error('Invalid app ID');
   const appid = Number(appIdSegment(input.appid));
-  if (input.kind === 'any') {
-    if (input.apiname !== undefined || input.threshold !== undefined) throw new Error('An any-achievement challenge has no target');
-    const count = input.count ?? 1;
-    if (!Number.isSafeInteger(count) || count < 1 || count > MAX_CHALLENGE_COUNT) throw new Error('Invalid count');
-    return { kind: 'any', appid, count };
-  }
   if (typeof input.apiname !== 'string' || !input.apiname || input.apiname.length > MAX_APINAME_CHARS) throw new Error('Invalid achievement');
-  if (input.count !== undefined) throw new Error('A single-achievement challenge has no count');
   if (input.kind === 'rare') {
     if (!RARE_THRESHOLDS.includes(input.threshold as number)) throw new Error('Invalid rare threshold');
     return { kind: 'rare', appid, apiname: input.apiname, threshold: input.threshold };
@@ -126,18 +113,16 @@ export function validateChallengeInput(input: ChallengeInput): ChallengeInput {
 }
 
 /**
- * The unlocks that count toward a challenge: unlocked, with an `unlocktime` at or after the acceptance second
- * (Steam reports whole seconds), and for a targeted challenge only its achievement. Earliest first. Pure.
+ * The unlocks that count toward a challenge: its achievement, unlocked with an `unlocktime` at or after the
+ * acceptance second (Steam reports whole seconds). Pure.
  */
 export function qualifyingUnlocks(
-  challenge: Pick<ChallengeView, 'kind' | 'apiname'>, achievements: readonly PlayerAchievement[], acceptedAtMs: number,
+  challenge: Pick<ChallengeView, 'apiname'>, achievements: readonly PlayerAchievement[], acceptedAtMs: number,
 ): ChallengeUnlock[] {
   const since = Math.floor(acceptedAtMs / 1000);
   return achievements
-    .filter(achievement => achievement.achieved && achievement.unlocktime !== null && achievement.unlocktime >= since
-      && (challenge.kind === 'any' || achievement.apiname === challenge.apiname))
-    .map(achievement => ({ apiname: achievement.apiname, unlocktime: achievement.unlocktime as number }))
-    .sort((a, b) => a.unlocktime - b.unlocktime || (a.apiname < b.apiname ? -1 : a.apiname > b.apiname ? 1 : 0));
+    .filter(achievement => achievement.apiname === challenge.apiname && achievement.achieved && achievement.unlocktime !== null && achievement.unlocktime >= since)
+    .map(achievement => ({ apiname: achievement.apiname, unlocktime: achievement.unlocktime as number }));
 }
 
 export interface ChallengeProgress {
@@ -147,12 +132,10 @@ export interface ChallengeProgress {
 
 /** Whether `achievements` complete an accepted challenge, with the unlocks that do it. Pure. */
 export function evaluateChallenge(
-  challenge: Pick<ChallengeView, 'kind' | 'apiname' | 'count' | 'acceptedAt'>, achievements: readonly PlayerAchievement[],
+  challenge: Pick<ChallengeView, 'apiname' | 'acceptedAt'>, achievements: readonly PlayerAchievement[],
 ): { met: boolean; progress: ChallengeProgress; unlocks: ChallengeUnlock[] } {
-  const required = challenge.count;
-  if (!challenge.acceptedAt) return { met: false, progress: { unlocked: 0, required }, unlocks: [] };
-  const unlocks = qualifyingUnlocks(challenge, achievements, challenge.acceptedAt.getTime());
-  return { met: unlocks.length >= required, progress: { unlocked: Math.min(unlocks.length, required), required }, unlocks: unlocks.slice(0, required) };
+  const unlocks = challenge.acceptedAt ? qualifyingUnlocks(challenge, achievements, challenge.acceptedAt.getTime()).slice(0, 1) : [];
+  return { met: unlocks.length === 1, progress: { unlocked: unlocks.length, required: 1 }, unlocks };
 }
 
 /** Active (issued or accepted) and past its expiry. */
@@ -172,17 +155,16 @@ function readUnlocks(value: unknown): ChallengeUnlock[] {
 /** Reads stored challenge data defensively: null when the essentials are missing or malformed. */
 export function toChallengeView(id: string, data: DocumentData | undefined): ChallengeView | null {
   if (!data || !CHALLENGE_KINDS.includes(data.kind) || !CHALLENGE_STATUSES.includes(data.status) || typeof data.appid !== 'number'
-    || !(data.issuedAt instanceof Timestamp) || !(data.expiresAt instanceof Timestamp)) return null;
+    || typeof data.apiname !== 'string' || !(data.issuedAt instanceof Timestamp) || !(data.expiresAt instanceof Timestamp)) return null;
   return {
     id,
     kind: data.kind,
     appid: data.appid,
     name: text(data.name),
-    apiname: text(data.apiname),
+    apiname: data.apiname,
     achievementName: text(data.achievementName),
     achievementDescription: text(data.achievementDescription),
     threshold: typeof data.threshold === 'number' ? data.threshold : null,
-    count: data.kind === 'any' && Number.isSafeInteger(data.count) && data.count > 0 ? data.count : 1,
     status: data.status,
     issuedAt: data.issuedAt.toDate(),
     acceptedAt: date(data.acceptedAt),
@@ -301,7 +283,7 @@ export async function verifyChallenge(steamId: string, id: string, { now = Date.
 
   const result = await getPlayerAchievements(steamId, challenge.appid, 'english', client);
   if (result.state === 'private') {
-    await markAchievementsPrivate(steamId, now);
+    await markPrivate(steamId, now);
     return { outcome: 'private', challenge };
   }
   // The fresh answer also refreshes the game's achievement data; a failed write only costs a refetch later.
@@ -316,13 +298,26 @@ export async function verifyChallenge(steamId: string, id: string, { now = Date.
 }
 
 export type IssueResult =
-  /** `existing`: the same challenge is already active, so it is returned instead of a duplicate. */
-  | { outcome: 'created' | 'existing'; challenge: ChallengeView }
-  | { outcome: 'needs_sync' | 'not_owned' | 'private' | 'no_achievements' | 'not_locked' | 'limit' };
+  /**
+   * `existing`: the same challenge is already active, so it is returned instead of a duplicate. `conflict`: a different
+   * challenge on the same achievement is active; one achievement backs at most one active challenge.
+   */
+  | { outcome: 'created' | 'existing' | 'conflict'; challenge: ChallengeView }
+  /** `not_rare`: Steam's global unlock percent for the achievement is above the rare tier, or Steam has none. */
+  | { outcome: 'needs_sync' | 'not_owned' | 'private' | 'no_achievements' | 'not_locked' | 'not_rare' | 'limit' };
 
 export interface IssueOptions {
   now?: number;
   client?: SteamClient;
+}
+
+/** Sets the private marker; a failed write only costs a Steam call next time, so the private answer still stands. */
+async function markPrivate(steamId: string, now: number): Promise<void> {
+  try {
+    await markAchievementsPrivate(steamId, now);
+  } catch (error) {
+    logServerError('Achievement private marker write failed', error);
+  }
 }
 
 /** The game's achievement record, fetched (and stored) when it is missing or stale; null when Steam keeps it private. */
@@ -332,20 +327,36 @@ async function currentAchievementRecord(steamId: string, appid: number, now: num
   if (await isAchievementsPrivate(steamId, now)) return 'private';
   const record = await fetchAchievementRecord(steamId, appid, now, client);
   if (!record) {
-    await markAchievementsPrivate(steamId, now);
+    await markPrivate(steamId, now);
     return 'private';
   }
   await saveAchievementRecords(steamId, new Map([[appid, record]]));
   return record;
 }
 
-const sameTarget = (a: Pick<ChallengeView, 'kind' | 'appid' | 'apiname'>, b: ChallengeInput) =>
-  a.kind === b.kind && a.appid === b.appid && a.apiname === (b.apiname ?? null);
+/** Active (issued or accepted, not overdue) challenges among `docs`. */
+const activeOf = (docs: readonly DocumentSnapshot[], now: number) =>
+  docs.map(viewOf).filter((challenge): challenge is ChallengeView => !!challenge && !isOverdue(challenge, now));
+
+/** The active challenge on the input's achievement: `existing` when it is the same request, else `conflict`. */
+function activeOnTarget(active: readonly ChallengeView[], input: ChallengeInput): IssueResult | null {
+  const match = active.find(challenge => challenge.appid === input.appid && challenge.apiname === input.apiname);
+  if (!match) return null;
+  const same = match.kind === input.kind && match.threshold === (input.threshold ?? null);
+  return { outcome: same ? 'existing' : 'conflict', challenge: match };
+}
+
+/** Whether Steam's global unlock percent for the achievement is at or below the tier. */
+async function isRareEnough(appid: number, apiname: string, threshold: number, client?: SteamClient): Promise<boolean> {
+  const rarity = await getGlobalAchievementPercentages(appid, client);
+  const percent = rarity?.find(achievement => achievement.apiname === apiname)?.percent;
+  return percent !== undefined && percent <= threshold;
+}
 
 /**
- * Issues a challenge for an owned game. A targeted challenge needs its achievement to be locked right now, and an
- * `any` challenge needs at least `count` locked achievements, both read from the game's achievement data (fetched
- * from Steam when missing or stale). Throws on a malformed input and on Steam failures.
+ * Issues a challenge for an owned game. Its achievement must be locked right now, read from the game's achievement
+ * data (fetched from Steam when missing or stale), and a `rare` one must be at or below its tier in Steam's global
+ * unlock percentages. Throws on a malformed input and on Steam failures.
  */
 export async function issueChallenge(steamId: string, raw: ChallengeInput, { now = Date.now(), client }: IssueOptions = {}): Promise<IssueResult> {
   const input = validateChallengeInput(raw);
@@ -353,12 +364,15 @@ export async function issueChallenge(steamId: string, raw: ChallengeInput, { now
   if (!index.built) return { outcome: 'needs_sync' };
   const entry = index.entries.get(input.appid);
   if (!entry) return { outcome: 'not_owned' };
+  const open = activeOnTarget(activeOf((await challengesRef(steamId).where('status', 'in', ACTIVE).limit(ACTIVE_READ_LIMIT).get()).docs, now), input);
+  if (open) return open;
 
   const record = await currentAchievementRecord(steamId, input.appid, now, client);
   if (record === 'private') return { outcome: 'private' };
   if (record.state !== 'ok' || !record.progress) return { outcome: 'no_achievements' };
-  const target = input.kind === 'any' ? null : record.locked.find(achievement => achievement.apiname === input.apiname);
-  if (input.kind === 'any' ? record.progress.total - record.progress.unlocked < (input.count ?? 1) : !target) return { outcome: 'not_locked' };
+  const target = record.locked.find(achievement => achievement.apiname === input.apiname);
+  if (!target) return { outcome: 'not_locked' };
+  if (input.kind === 'rare' && !await isRareEnough(input.appid, input.apiname, input.threshold as number, client)) return { outcome: 'not_rare' };
 
   const ref = challengesRef(steamId).doc();
   const issued: ChallengeRecord = stripUndefined({
@@ -366,21 +380,18 @@ export async function issueChallenge(steamId: string, raw: ChallengeInput, { now
     appid: input.appid,
     name: entry.n,
     apiname: input.apiname,
-    achievementName: target?.name,
-    achievementDescription: target?.description,
+    achievementName: target.name,
+    achievementDescription: target.description,
     threshold: input.threshold,
-    count: input.count,
     status: 'issued' as const,
     issuedAt: Timestamp.fromMillis(now),
     expiresAt: Timestamp.fromMillis(now + CHALLENGE_TTL_MS.offer),
   });
-  return runTransaction(async tx => {
+  return runTransaction<IssueResult>(async tx => {
     // Reading the active set in the transaction makes the duplicate check and the cap race-free.
-    const active = (await tx.get(challengesRef(steamId).where('status', 'in', ACTIVE).limit(ACTIVE_READ_LIMIT))).docs
-      .map(viewOf)
-      .filter((challenge): challenge is ChallengeView => !!challenge && !isOverdue(challenge, now));
-    const duplicate = active.find(challenge => sameTarget(challenge, input));
-    if (duplicate) return { outcome: 'existing' as const, challenge: duplicate };
+    const active = activeOf((await tx.get(challengesRef(steamId).where('status', 'in', ACTIVE).limit(ACTIVE_READ_LIMIT))).docs, now);
+    const duplicate = activeOnTarget(active, input);
+    if (duplicate) return duplicate;
     if (active.length >= MAX_ACTIVE_CHALLENGES) return { outcome: 'limit' as const };
     tx.create(ref, issued);
     stageEvent(tx, steamId, { type: EVENT_TYPES.issued, appid: input.appid, refId: ref.id, meta: stripUndefined({ kind: input.kind, threshold: input.threshold }) }, now);
