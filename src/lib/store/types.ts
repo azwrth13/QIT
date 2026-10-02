@@ -232,17 +232,33 @@ export interface PublicLibraryRecord {
 
 export interface LobbyRecord {
   hostId: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
   expiresAt: Timestamp;
   version: number;
-  status: string;
-  filters: Record<string, unknown>;
-  members: Record<string, Record<string, unknown>>;
+  status: 'active' | 'expired' | 'closed';
+  filters: FilterSelection[];
+  members: Record<string, LobbyMemberRecord>;
+  commonCount: number;
+  commonChunkCount: number;
+  filteredCount: number;
+  filterUnknownCount: number;
   result?: Record<string, unknown>;
   rejected: number[];
   votes: Record<string, unknown>;
   vetoes: Record<string, number[]>;
 }
 
+export interface LobbyMemberRecord {
+  name: string;
+  avatar: string | null;
+  state: 'present' | 'ready' | 'away';
+  libraryState: 'ok' | 'private' | 'not_found' | 'error';
+  playtimeHidden: boolean;
+  joinedAt: Timestamp;
+}
+
 export interface LobbyCommonChunkRecord {
-  appids: number[];
+  /** Version-prefixed deflate/base64 candidates stay below document/index limits. */
+  games: string;
 }

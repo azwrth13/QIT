@@ -24,6 +24,7 @@ export const COLLECTIONS = {
   publicLibraries: 'publicLibraries',
   lobbies: 'lobbies',
   common: 'common',
+  lobbyLimits: 'lobbyLimits',
 } as const;
 
 const C = COLLECTIONS;
@@ -93,4 +94,5 @@ export const paths = {
   lobbies: () => C.lobbies,
   lobby: (code: string) => `${C.lobbies}/${docIdSegment(code)}`,
   lobbyCommonChunk: (code: string, chunk: number) => `${C.lobbies}/${docIdSegment(code)}/${C.common}/${chunkSegment(chunk)}`,
+  lobbyLimit: (key: string) => `${C.lobbyLimits}/${docIdSegment(key)}`,
 };
