@@ -91,6 +91,16 @@ describe('current players batch', () => {
       expect(result.unresolved).toEqual([2, 3, 4, 5, 6]);
     } finally { now.mockRestore(); }
   });
+  it('treats a failed cache read as a miss and still returns counts when the cache write fails', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    readAppLive.mockRejectedValueOnce(new Error('firestore down'));
+    writeAppLive.mockRejectedValueOnce(new Error('firestore down'));
+    const fetch = vi.fn(async () => Response.json({ response: { result: 1, player_count: 500 } }));
+    const result = await getCurrentPlayers([1, 2], { client: createSteamClient({ fetch }) });
+    expect(result).toEqual({ players: new Map([[1, 500], [2, 500]]), unresolved: [], fetched: 2 });
+    expect(log).toHaveBeenCalledTimes(2);
+    log.mockRestore();
+  });
   it('rejects an oversized batch and invalid ids before reading storage', async () => {
     await expect(getCurrentPlayers(Array.from({ length: 41 }, (_, i) => i + 1))).rejects.toThrow();
     await expect(getCurrentPlayers([0])).rejects.toThrow();
@@ -120,5 +130,14 @@ describe('cheap concurrency prior', () => {
     const fetch = vi.fn(async () => Response.json({}, { status: 503 }));
     expect(await getTopConcurrentApps({ client: createSteamClient({ fetch, retries: 0 }) })).toEqual([]);
     expect(writeConcurrentChart).not.toHaveBeenCalled();
+  });
+  it('fetches the chart when the cache read fails and returns it when the cache write fails', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    readConcurrentChart.mockRejectedValueOnce(new Error('firestore down'));
+    writeConcurrentChart.mockRejectedValueOnce(new Error('firestore down'));
+    const fetch = vi.fn(async () => Response.json({ response: { ranks: [{ appid: 7, rank: 1, concurrent_in_game: 10 }] } }));
+    expect(await getTopConcurrentApps({ client: createSteamClient({ fetch }) })).toEqual([7]);
+    expect(log).toHaveBeenCalledTimes(2);
+    log.mockRestore();
   });
 });

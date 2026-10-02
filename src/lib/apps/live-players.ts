@@ -2,6 +2,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { THRESHOLDS } from '../roulette/thresholds';
 import type { ActivityBand, LiveSignals, Thresholds } from '../roulette/types';
 import { getCurrentPlayers as fetchCurrentPlayers, getGamesByConcurrentPlayers } from '../steam/charts';
+import { logServerError } from '../steam';
 import { getSteamClient, type SteamClient } from '../steam/client';
 import { readAppLive, readConcurrentChart, writeAppLive, writeConcurrentChart } from '../store/app-live';
 import { isExpired } from '../store/converters';
@@ -14,6 +15,13 @@ export const PLAYER_BATCH_LIMIT = 40;
 export const PLAYER_BATCH_CONCURRENCY = 5;
 /** Stop starting new calls after 20s; shared Steam calls have their own 25s deadline. */
 export const PLAYER_BATCH_START_BUDGET_MS = 20_000;
+
+async function bestEffortCache<T>(context: string, operation: () => Promise<T>, fallback: T): Promise<T> {
+  try { return await operation(); } catch (error) {
+    logServerError(context, error);
+    return fallback;
+  }
+}
 
 const knownCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
@@ -48,7 +56,7 @@ export async function getCurrentPlayers(appids: readonly number[], options: { cl
   if (unique.length > PLAYER_BATCH_LIMIT) throw new Error('Too many app IDs');
   unique.forEach(appIdSegment);
   const now = options.now ?? Date.now();
-  const cached = await readAppLive(unique);
+  const cached = await bestEffortCache('App live cache read failed', () => readAppLive(unique), new Map<number, AppLiveRecord>());
   const players = new Map<number, number | null>();
   const pending: number[] = [];
   for (const appid of unique) {
@@ -68,7 +76,7 @@ export async function getCurrentPlayers(appids: readonly number[], options: { cl
       writes.set(appid, { players: count, fetchedAt: Timestamp.fromMillis(now), expiresAt: Timestamp.fromMillis(now + APP_LIVE_TTL_MS) });
     }
   }));
-  await writeAppLive(writes);
+  await bestEffortCache('App live cache write failed', () => writeAppLive(writes), undefined);
   return { players, unresolved: unique.filter(appid => !players.has(appid)), fetched: writes.size };
 }
 
@@ -81,13 +89,13 @@ export function liveSignalsOf(players: ReadonlyMap<number, number | null>, thres
 /** One cheap keyless chart call, cached persistently for five minutes. A failed refresh returns no prior. */
 export async function getTopConcurrentApps(options: { client?: SteamClient; now?: number } = {}): Promise<number[]> {
   const now = options.now ?? Date.now();
-  const cached = await readConcurrentChart();
+  const cached = await bestEffortCache('Concurrent chart cache read failed', readConcurrentChart, undefined);
   if (cached && !isExpired(cached.expiresAt, now)) return cached.appids;
   let chart;
   try { chart = await getGamesByConcurrentPlayers(options.client ?? getSteamClient()); } catch { return []; }
   const appids = [...new Set(chart.ranks.filter(rank => knownCount(rank.concurrent_in_game))
     .sort((a, b) => b.concurrent_in_game - a.concurrent_in_game).map(rank => rank.appid))].slice(0, 100);
-  await writeConcurrentChart({ appids, fetchedAt: Timestamp.fromMillis(now), expiresAt: Timestamp.fromMillis(now + CONCURRENT_CHART_TTL_MS) });
+  await bestEffortCache('Concurrent chart cache write failed', () => writeConcurrentChart({ appids, fetchedAt: Timestamp.fromMillis(now), expiresAt: Timestamp.fromMillis(now + CONCURRENT_CHART_TTL_MS) }), undefined);
   return appids;
 }
 
