@@ -1,3 +1,4 @@
+import { startedButAbandoned } from '../../library/backlog';
 import { reason } from '../reasons';
 import type { Mode, Reason } from '../types';
 import { unfinishedAchievements } from './achievement-signals';
@@ -22,12 +23,9 @@ const achievementHunter: Mode = {
       weight += 2;
       reasons.push(reason('ach_near_complete', { percent, remaining }));
     }
-    const { playtimeForever, lastPlayedAt } = candidate.signals.library;
-    if (!ctx.playtimeHidden && playtimeForever >= t.abandonedMinMinutes && playtimeForever < t.abandonedMaxMinutes &&
-      lastPlayedAt !== null && lastPlayedAt > 0 && lastPlayedAt <= ctx.now &&
-      ctx.now - lastPlayedAt >= t.abandonedIdleDays * 86_400) {
+    if (startedButAbandoned(candidate, ctx) === 'match') {
       weight += 1;
-      reasons.push(reason('idle', { months: (ctx.now - lastPlayedAt) / (30 * 86_400) }));
+      reasons.push(reason('idle', { months: (ctx.now - candidate.signals.library.lastPlayedAt!) / (30 * 86_400) }));
     }
     return { eligible: true, weight, reasons };
   },

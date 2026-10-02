@@ -40,13 +40,15 @@ describe('achievement modes', () => {
   });
 
   it('hunter gives abandoned games a bonus only within playtime and idle edges', () => {
-    for (const [minutes, idle, expected] of [[29, 90, 3], [30, 89, 3], [30, 90, 4], [599, 90, 4], [600, 90, 3]]) {
+    for (const [minutes, idle, expected] of [[29, 90, 3], [30, 89, 3], [30, 90, 4], [600, 90, 4], [601, 90, 3]]) {
       const score = hunter.score(game(80, 100, minutes, idle), ctx);
       expect(score.weight).toBe(expected);
       expect(score.reasons.some(r => r.code === 'idle')).toBe(expected === 4);
     }
     expect(hunter.score(game(80, 100, 30), ctx).weight).toBe(3);
     expect(hunter.score(game(80, 100, 30, -1), ctx).weight).toBe(3);
+    const recent = game(80, 100, 30, 90); recent.signals.library.playtime2Weeks = 1;
+    expect(hunter.score(recent, ctx).weight).toBe(3);
   });
 
   it('finish eligibility and near-completion reasons change at configured edges', () => {
@@ -74,7 +76,7 @@ describe('achievement modes', () => {
 
   it.each([hunter, finish])('$id keeps achievement eligibility while suppressing hidden-playtime bonuses', mode => {
     const invested = game(91, 100, 300, 90);
-    invested.signals.library.playtime2Weeks = 5;
+    if (mode === finish) invested.signals.library.playtime2Weeks = 5;
     expect(mode.score(invested, { ...ctx, playtimeHidden: true })).toEqual(mode.score(game(91), ctx));
     expect(mode.score(invested, ctx).weight).toBeGreaterThan(mode.score(game(91), ctx).weight);
   });
