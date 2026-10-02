@@ -91,13 +91,15 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
     expect(await getChallenge(steamId, challenge.id)).toEqual(challenge);
     // The Steam answer was stored through the achievements data, so a second issue costs no call.
     expect((await readAchievementRecord(steamId, 620))?.progress).toEqual({ unlocked: 1, total: 3, percent: 33 });
-    await issued(steamId, steam.client, { kind: 'achievement', appid: 620, apiname: 'C' });
+    const second = await issued(steamId, steam.client, { kind: 'achievement', appid: 620, apiname: 'C' });
     expect(steam.calls).toEqual([620]);
     expect(steam.rarityCalls).toEqual([]);
+    // Both events share the issue time, so their stored order is not fixed.
     const events = await listEvents(steamId);
-    expect(events.map(event => [event.type, event.refId, event.meta])).toEqual([
-      ['challenge_issue', challenge.id, { kind: 'achievement' }], ['challenge_issue', expect.any(String), { kind: 'achievement' }],
-    ]);
+    expect(events.map(event => [event.type, event.refId, event.meta])).toEqual(expect.arrayContaining([
+      ['challenge_issue', challenge.id, { kind: 'achievement' }], ['challenge_issue', second.id, { kind: 'achievement' }],
+    ]));
+    expect(events).toHaveLength(2);
   });
 
   it('refuses challenges that cannot be completed or would duplicate an open one', async () => {
@@ -140,7 +142,8 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
     const active = (await listChallenges(steamId, { status: 'active', now: NOW })).challenges;
     expect(active.map(challenge => challenge.apiname).sort()).toEqual(['B', 'C']);
     expect((await listEvents(steamId)).filter(event => event.type === 'challenge_issue')).toHaveLength(2);
-  });
+    // Racing transactions contend on the emulator's locks and retry with backoff, which can take several seconds.
+  }, 30_000);
 
   it('issues a rare challenge only when Steam\'s global unlock percent is at or below the tier', async () => {
     const { steamId, steam } = await setup();
