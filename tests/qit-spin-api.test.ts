@@ -70,7 +70,7 @@ describe('parseSpinRequest', () => {
 
   it('rejects anything it does not recognise', () => {
     const bad: unknown[] = [
-      null, [], 'spin', {}, { mode: 'nope' }, { mode: 'dust-collector' }, { mode: 'pure-random', extra: 1 },
+      null, [], 'spin', {}, { mode: 'nope' }, { mode: 'achievement-hunter' }, { mode: 'pure-random', extra: 1 },
       { mode: 'pure-random', filters: [{ id: 'installed' }] }, { mode: 'pure-random', filters: [{ id: 'playtime', params: {} }] },
       { mode: 'pure-random', scope: { kind: 'library', with: steamId } }, { mode: 'pure-random', scope: { kind: 'galaxy' } },
       { mode: 'pure-random', exclude: [0] }, { mode: 'pure-random', exclude: ['620'] },
@@ -287,6 +287,15 @@ describe('runSpin', () => {
     expect(result.coverage.achievements).toBe(0);
   });
 
+  it.each(['dust-collector', 'something-different', 'comfort-pick', 'rediscovery'])('treats hidden playtime as unknown in %s spins and previews', async mode => {
+    const { deps, recordRoll } = fixture(games, { playtimeHidden: true });
+    const spin = await runSpin(steamId, parse({ mode }), deps);
+    expect(spin).toMatchObject({ card: null, eligible: 0, playtimeHidden: true });
+    const preview = await runPoolPreview(steamId, parse({ mode }, 'pool'), deps);
+    expect(preview).toMatchObject({ eligible: 0, playtimeHidden: true });
+    expect(recordRoll).not.toHaveBeenCalled();
+  });
+
   it('stores unknown playtime and refuses playtime filters when Steam hides playtime', async () => {
     const { deps, recordRoll } = fixture(games, { playtimeHidden: true });
     const result = await runSpin(steamId, parse({ mode: 'pure-random', exclude: [20, 50] }), deps);
@@ -463,9 +472,9 @@ describe('/api/roulette routes', () => {
     expect((await post(spinRoute, 'spin', { mode: 'pure-random' }, { origin: 'https://evil.test' })).status).toBe(403);
     expect((await post(poolRoute, 'pool', {}, {})).status).toBe(403);
     expect((await post(spinRoute, 'spin', '{nope')).status).toBe(400);
-    const invalid = await post(spinRoute, 'spin', { mode: 'dust-collector' });
+    const invalid = await post(spinRoute, 'spin', { mode: 'achievement-hunter' });
     expect(invalid.status).toBe(400);
-    expect(await invalid.json()).toEqual({ error: { code: 'invalid', message: 'mode dust-collector is not available' } });
+    expect(await invalid.json()).toEqual({ error: { code: 'invalid', message: 'mode achievement-hunter is not available' } });
     expect((await post(spinRoute, 'spin', { mode: 'pure-random', exclude: 'x'.repeat(17 * 1024) })).status).toBe(413);
     expect(spin).not.toHaveBeenCalled();
   });
@@ -512,7 +521,8 @@ describe('/api/roulette routes', () => {
     const response = await modesRoute(new Request('https://qit.test/api/roulette/modes', { headers: headers() }));
     const body = await response.json();
     expect(body).toEqual(modesCatalog());
-    expect(body.modes).toEqual([{ id: 'pure-random', label: 'Pure Random', description: 'Any eligible game, each equally likely.', requires: ['library'], scopes: ['library'] }]);
+    expect(body.modes.map((mode: { id: string }) => mode.id)).toEqual(['pure-random', 'dust-collector', 'something-different', 'comfort-pick', 'rediscovery']);
+    expect(body.modes.every((mode: { requires: string[]; scopes: string[] }) => mode.requires.join() === 'library' && mode.scopes.join() === 'library')).toBe(true);
     expect(body.scopes).toEqual(['library']);
     expect(body.filters.map((f: { id: string }) => f.id)).toContain('never-played');
     expect(body.filters.map((f: { id: string }) => f.id)).not.toContain('installed');

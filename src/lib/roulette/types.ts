@@ -158,6 +158,8 @@ export interface Thresholds {
 }
 
 export interface ScoreContext {
+  /** Hidden totals are unknown even when Steam supplies zeros. */
+  playtimeHidden?: boolean;
   /** Unix seconds. */
   now: number;
   thresholds: Thresholds;

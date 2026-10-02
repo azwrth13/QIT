@@ -184,7 +184,7 @@ describe('scoring', () => {
   });
 
   it('refuses stub modes and scopes the mode does not support', () => {
-    expect(() => scoreCandidates(getMode('dust-collector'), [], ctx())).toThrow(StubNotImplementedError);
+    expect(() => scoreCandidates(getMode('achievement-hunter'), [], ctx())).toThrow(StubNotImplementedError);
     expect(() => scoreCandidates(byPlaytime, [candidate(1, 5)], ctx({ kind: 'pair', with: '76561198000000001' }))).toThrow(ModeScopeError);
   });
 

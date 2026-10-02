@@ -15,7 +15,7 @@ describe('roulette registries', () => {
   it('resolve all 20 mode and filter ids, with unimplemented modes as stubs', () => {
     expect(MODE_IDS.length + FILTER_IDS.length).toBe(20);
     // Modes whose owning package has replaced the stub; each has its own tests.
-    const implementedModes: readonly string[] = ['pure-random'];
+    const implementedModes: readonly string[] = ['pure-random', 'dust-collector', 'something-different', 'comfort-pick', 'rediscovery'];
     for (const modeId of MODE_IDS) {
       const mode = getMode(modeId);
       expect(mode).toMatchObject({ id: modeId, stub: !implementedModes.includes(modeId) });

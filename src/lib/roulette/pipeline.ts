@@ -183,7 +183,7 @@ export async function runSpin(steamId: string, request: ParsedSpinRequest, deps:
   const built = await buildPool(steamId, request, deps, now, true);
   const coverage = coverageFor(built, request);
   const seed = request.seed ?? deps.randomSeed();
-  const { picks, eligible } = roll(mode, built.pool, { now: built.filterCtx.now, thresholds: deps.thresholds, scope: request.scope }, { rng: createRng(seed) });
+  const { picks, eligible } = roll(mode, built.pool, { now: built.filterCtx.now, thresholds: deps.thresholds, scope: request.scope, playtimeHidden: built.scope.playtimeHidden }, { rng: createRng(seed) });
   const result = { poolSize: built.pool.length, coverage, seed, eligible, preview: built.preview, playtimeHidden: built.scope.playtimeHidden === true };
   const pick = picks[0];
   if (!pick) return { card: null, ...result };
@@ -217,7 +217,7 @@ export async function runPoolPreview(steamId: string, request: ParsedSpinRequest
   const now = deps.now();
   const built = await buildPool(steamId, request, deps, now, false);
   const eligible = request.mode
-    ? scoreCandidates(request.mode, built.pool, { now: built.filterCtx.now, thresholds: deps.thresholds, scope: request.scope }).length
+    ? scoreCandidates(request.mode, built.pool, { now: built.filterCtx.now, thresholds: deps.thresholds, scope: request.scope, playtimeHidden: built.scope.playtimeHidden }).length
     : null;
   return { preview: built.preview, coverage: coverageFor(built, request), eligible, playtimeHidden: built.scope.playtimeHidden === true };
 }
