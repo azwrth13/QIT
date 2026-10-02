@@ -70,7 +70,7 @@ describe('parseSpinRequest', () => {
 
   it('rejects anything it does not recognise', () => {
     const bad: unknown[] = [
-      null, [], 'spin', {}, { mode: 'nope' }, { mode: 'achievement-hunter' }, { mode: 'pure-random', extra: 1 },
+      null, [], 'spin', {}, { mode: 'nope' }, { mode: 'pure-random', extra: 1 },
       { mode: 'pure-random', filters: [{ id: 'installed' }] }, { mode: 'pure-random', filters: [{ id: 'playtime', params: {} }] },
       { mode: 'pure-random', scope: { kind: 'library', with: steamId } }, { mode: 'pure-random', scope: { kind: 'galaxy' } },
       { mode: 'pure-random', exclude: [0] }, { mode: 'pure-random', exclude: ['620'] },
@@ -472,9 +472,9 @@ describe('/api/roulette routes', () => {
     expect((await post(spinRoute, 'spin', { mode: 'pure-random' }, { origin: 'https://evil.test' })).status).toBe(403);
     expect((await post(poolRoute, 'pool', {}, {})).status).toBe(403);
     expect((await post(spinRoute, 'spin', '{nope')).status).toBe(400);
-    const invalid = await post(spinRoute, 'spin', { mode: 'achievement-hunter' });
+    const invalid = await post(spinRoute, 'spin', { mode: 'nope' });
     expect(invalid.status).toBe(400);
-    expect(await invalid.json()).toEqual({ error: { code: 'invalid', message: 'mode achievement-hunter is not available' } });
+    expect(await invalid.json()).toEqual({ error: { code: 'invalid', message: 'unknown mode' } });
     expect((await post(spinRoute, 'spin', { mode: 'pure-random', exclude: 'x'.repeat(17 * 1024) })).status).toBe(413);
     expect(spin).not.toHaveBeenCalled();
   });
@@ -521,7 +521,7 @@ describe('/api/roulette routes', () => {
     const response = await modesRoute(new Request('https://qit.test/api/roulette/modes', { headers: headers() }));
     const body = await response.json();
     expect(body).toEqual(modesCatalog());
-    expect(body.modes.map((mode: { id: string }) => mode.id)).toEqual(['pure-random', 'dust-collector', 'something-different', 'comfort-pick', 'alive-and-kicking', 'everyone-owns-it', 'rediscovery']);
+    expect(body.modes.map((mode: { id: string }) => mode.id)).toEqual(['pure-random', 'dust-collector', 'something-different', 'comfort-pick', 'achievement-hunter', 'alive-and-kicking', 'everyone-owns-it', 'finish-something', 'rediscovery']);
     expect(body.modes.find((mode: { id: string }) => mode.id === 'everyone-owns-it').scopes).toEqual(['friends', 'pair']);
     expect(body.scopes).toEqual(['library', 'friends', 'pair']);
     expect(body.filters.map((f: { id: string }) => f.id)).toContain('never-played');
@@ -537,5 +537,48 @@ describe('/api/roulette routes', () => {
     expect(ids).toContain('player-activity');
     expect(ids).not.toContain('co-op');
     expect(ids).not.toContain('exclude-rolled');
+  });
+});
+
+
+describe('indexed achievement modes in the spin pipeline', () => {
+  const entries = [
+    { n: 'Unscanned', i: '', p: 300 },
+    { n: 'No achievements', i: '', p: 300, at: 0 },
+    { n: 'Finished', i: '', p: 300, at: 100, au: 100, ap: 100 },
+    { n: 'Almost finished', i: '', p: 300, at: 100, au: 91, ap: 91 },
+  ];
+  it.each(['achievement-hunter', 'finish-something'])('%s reports unscanned coverage and selects only unfinished summaries', async mode => {
+    const { deps, recordRoll } = fixture(entries.map((_, i) => ({ appid: i + 1 })));
+    deps.resolvers.library = {
+      kind: 'library', provides: ['achievements'],
+      resolve: async () => ({ candidates: entries.map((entry, i) => candidateFromIndexEntry(i + 1, entry)), members: [steamId], unavailable: [] }),
+    };
+    delete deps.loaders.achievements;
+    const request = parse({ mode });
+    const preview = await runPoolPreview(steamId, request, deps);
+    const spin = await runSpin(steamId, request, deps);
+    expect(preview).toMatchObject({ eligible: 1, coverage: { achievements: 0.75 } });
+    expect(spin).toMatchObject({ eligible: 1, poolSize: 4, coverage: { achievements: 0.75 }, card: { appid: 4 } });
+    expect(recordRoll).toHaveBeenCalledTimes(1);
+    expect(spin.card?.achievements).toEqual({ unlocked: 91, total: 100, percent: 91 });
+  });
+
+  it('returns scan-ready coverage when every achievement summary is unknown', async () => {
+    const { deps, recordRoll } = fixture([{ appid: 1 }, { appid: 2 }]);
+    const spin = await runSpin(steamId, parse({ mode: 'finish-something' }), deps);
+    expect(spin).toMatchObject({ eligible: 0, card: null, coverage: { achievements: 0 } });
+    expect(recordRoll).not.toHaveBeenCalled();
+  });
+
+  it.each(['achievement-hunter', 'finish-something'])('%s receives the hidden-playtime flag during spins and previews', async modeId => {
+    const { deps } = fixture([{ appid: 1 }], { playtimeHidden: true });
+    const request = parse({ mode: modeId });
+    const score = vi.fn<Mode['score']>(() => ({ eligible: true, weight: 1, reasons: [] }));
+    request.mode = { ...request.mode!, score };
+    await runPoolPreview(steamId, request, deps);
+    await runSpin(steamId, request, deps);
+    expect(score).toHaveBeenCalledTimes(2);
+    for (const call of score.mock.calls) expect(call[1]).toMatchObject({ playtimeHidden: true });
   });
 });

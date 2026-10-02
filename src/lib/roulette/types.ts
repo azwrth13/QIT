@@ -147,6 +147,7 @@ export interface Thresholds {
   closeToCompletePercent: number;
   finishSomethingPreferPercent: number;
   manyRemainingLocked: number;
+  finishSomethingFewRemaining: number;
   rareTiersPercent: readonly number[];
   activeMinPlayers: number;
   activityHighPercentile: number;
@@ -158,7 +159,7 @@ export interface Thresholds {
 }
 
 export interface ScoreContext {
-  /** Hidden totals are unknown even when Steam supplies zeros. */
+  /** Hidden totals are unknown even when Steam supplies zeros; suppress playtime and recency bonuses. */
   playtimeHidden?: boolean;
   /** Unix seconds. */
   now: number;
