@@ -102,4 +102,20 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)('streaks (emulator)', () =
     expect(await progress(user, '2025-12-31T12:00Z')).toMatchObject({ current: 0, longest: 0, lastDay: null });
     expect((await db.doc(paths.statsSummary(user)).get()).get('streak')).toEqual({ current: 0, longest: 0 });
   });
+  it('keeps the cached projection across nonqualifying events and refreshes it after a qualifying one', async () => {
+    const user = freshUser();
+    await play(user, '2026-01-01T12:00Z');
+    await progress(user, '2026-01-01T13:00Z');
+    const summary = () => db.doc(paths.statsSummary(user)).get();
+    const cachedAt = (await summary()).get('progressionCache.at');
+    await recordEvent(user, { type: 'roll', appid: 10, meta: { modeId: 'pure-random' } }, ms('2026-01-01T13:30Z'));
+    await recordEvent(user, { type: 'accept', appid: 10, meta: { modeId: 'pure-random' } }, ms('2026-01-01T13:31Z'));
+    expect((await summary()).get('eventRevision')).toBe(1);
+    expect((await readStats(user, ms('2026-01-01T14:00Z'))).counters).toMatchObject({ roll: 1, accept: 1, played: 1 });
+    expect((await summary()).get('progressionCache.at')).toBe(cachedAt);
+    await recordEvent(user, { type: 'challenge_complete', refId: 'c1' }, ms('2026-01-01T14:30Z'));
+    expect((await summary()).get('eventRevision')).toBe(2);
+    expect((await progress(user, '2026-01-01T15:00Z')).challengesCompleted).toBe(1);
+    expect((await summary()).get('progressionCache.revision')).toBe(2);
+  });
 });

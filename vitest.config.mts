@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const firestoreTests = ['tests/firestore.test.ts', 'tests/qit-store-layer.firestore.test.ts', 'tests/**/*.emulator.test.?(c|m)[jt]s?(x)'];
 
 export default defineConfig({
+  oxc: { jsx: { runtime: 'automatic' } },
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     environment: 'node',
