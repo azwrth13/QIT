@@ -30,8 +30,8 @@ The cap includes already played rolls. Older rolls outside either bound require 
 
 ## Validation
 
-- `tests/qit-played-detection.test.ts`: 9/10-minute edge, zero baseline, invalid/unknown/reduced totals, missing games, stale baselines via `rtime_last_played`, one mark per game per session, hidden and empty libraries, sync source, snapshot cutoff, and transaction outcomes.
-- `tests/qit-played-detection.emulator.test.ts` via `npm run test:firestore`: real sync/store integration, idempotent re-sync and concurrent detection, manual source preservation, hidden-to-visible recovery, unknown/missing/reduced playtime, stale index baselines, several rolls of one game, history window/cap, private library, rolls during sync, and the sync route returning 200 with persisted library data when detection fails followed by a successful retry.
+- `tests/qit-played-detection.test.ts`: 9/10-minute edge, zero baseline, invalid/unknown/reduced totals, missing games, stale baselines via `rtime_last_played`, one mark per game per session, hidden and empty libraries, sync source, and transaction outcomes.
+- `tests/qit-played-detection.emulator.test.ts` via `npm run test:firestore`: real sync/store integration, idempotent re-sync and concurrent detection, manual source preservation, hidden-to-visible recovery, unknown/missing/reduced playtime, stale index baselines, several rolls of one game, history window/cap, private library, and the sync route returning 200 with persisted library data when detection fails followed by a successful retry.
 
 Local validation passed: `npm test`, `npm run test:firestore`, `npm run typecheck`, and `npm run lint`.
 
