@@ -176,6 +176,13 @@ export interface AppLiveRecord {
   expiresAt: Timestamp;
 }
 
+export interface ConcurrentChartRecord {
+  /** Top 100 appids, ordered by current concurrency. Absence does not mean inactive. */
+  appids: number[];
+  fetchedAt: Timestamp;
+  expiresAt: Timestamp;
+}
+
 export interface AppAchievementsRecord {
   /** global unlock percent by apiname */
   percents: Record<string, number>;
