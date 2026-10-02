@@ -1,0 +1,17 @@
+# Current player counts and activity bands
+
+`src/lib/apps/live-players.ts` exports `getCurrentPlayers(appids, options)` for batches of up to 40 distinct apps. It reuses the keyless wrapper in `steam/charts.ts` and the shared Steam client's timeout, retry and semaphore. Five workers fetch missing or expired counters. After 20 seconds the batch stops starting new calls; in-flight shared calls retain their 25-second deadline. Failed or unattempted apps are returned in `unresolved` and are never cached as absent counters.
+
+The store adapter `store/app-live.ts` reads and writes independent `appLive/{appid}` records with `players`, `fetchedAt`, and `expiresAt` as Firestore timestamps. Counts (including zero) and confirmed absent counters (`null`) expire after ten minutes, with expiry checked by readers. An expired count is never presented as current after a failed refresh. Neither `apps/{appid}` nor the user's game documents or library index are modified. Operational TTL deletion is optional.
+
+`activityBand(players, pool, thresholds)` is pure. It ignores unknown counters in the pool and calculates linearly interpolated P25 and P75. Counts below `THRESHOLDS.activeMinPlayers` (100) are low; otherwise counts at or above P75 are high, at or below P25 are low, and the remainder are mid. High wins if quartiles tie. No counter means no band. All three thresholds come from the existing tunable defaults. `liveSignalsOf` computes bands for an entire collected pool; callers enriching larger pools in batches must combine the maps before computing bands.
+
+`getTopConcurrentApps` retrieves up to 100 ranked appids through the shared keyless chart wrapper, cached for five minutes in `appCharts/concurrent`. `prefilterByConcurrency` prioritizes chart matches within a candidate pool before selecting a bounded subset for enrichment, preserving the remaining candidates' order. Missing from the chart does not mean inactive. A Steam chart failure returns an empty prior without caching the failure. The chart is a separate cheap prefilter: explicit player-count requests do not add a chart call or restrict counts to chart games.
+
+`POST /api/apps/players` accepts `{ "appids": [620, 730] }` with at most 40 submitted IDs, including duplicates. It requires sign-in and same-origin requests, checks every distinct app against `ownsGames`, and applies the standard per-user and per-IP token buckets (20 user requests with 0.5/s refill, 60 IP requests with 2/s refill). Body size is capped at 2048 bytes. Refusals use the shared error envelope, and all responses carry `Cache-Control: private, no-store`.
+
+The response is `{ players: { "620": { players: 123, band: "high" } }, unresolved: [], fetched: 1 }`. `fetched` counts newly cached answers. A confirmed absent counter appears as `{ players: null, band: null }`; a transient failure appears only in `unresolved`. Bands are relative to the known counters in this request. Empty appid arrays are accepted as an empty pool.
+
+Tests cover percentile edges, interpolation, ties, configurable thresholds, the absolute floor, absent counters, batch concurrency and the start budget, mocked keyless fetch, positive and negative cache reuse, exact expiry, chart caching and prioritization, route auth/origin/ownership/cap/rate limits, and Firestore cache isolation. Run `npm test`, `npm run typecheck`, `npm run lint`, and `npm run test:firestore`.
+
+Later packages own UI badges, navigation, activity mode scoring, and wiring these services into roulette enrichment. No product surfaces were added here.
