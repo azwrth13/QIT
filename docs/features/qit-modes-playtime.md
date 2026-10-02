@@ -36,4 +36,4 @@ Never-launched games can match Dust Collector and Something Different without a 
 
 `tests/qit-modes-playtime.test.ts` covers scoring weights, reasons through the renderer, registry/core sampling, all category boundaries, tunable thresholds, missing achievement summaries, unknown recency, and hidden totals. Spin tests cover hidden totals in both actual spins and previews; registry and catalog tests reflect the implemented modes.
 
-No Backlog Discovery page, Daily selection, or picker UI is added here. D7's Dust Collector / Rediscovery / Finish Something / Something Different mix remains for the Daily package. Group scopes must supply accurate requester playtime and propagate hidden-playtime state when they land; the current library scope already does so.
+No Backlog Discovery page, Daily selection, or picker UI is added here. D7's Dust Collector / Rediscovery / Finish Something / Something Different mix remains for the Daily package. Scopes must supply accurate requester playtime and propagate hidden-playtime state; the library and group scopes do so.

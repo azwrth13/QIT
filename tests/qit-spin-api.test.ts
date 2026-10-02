@@ -90,7 +90,7 @@ describe('parseSpinRequest', () => {
   it('rejects filters whose signals have no source yet', () => {
     const activity = { id: 'player-activity', params: { mode: 'active' } };
     for (const filter of [activity, { id: 'shared-with-friends', params: {} }]) {
-      expect(parseSpinRequest({ mode: 'pure-random', filters: [filter] }, 'spin', SOURCED_FAMILIES)).toEqual({ ok: false, error: `filter ${filter.id} is not available` });
+      expect(parseSpinRequest({ mode: 'pure-random', filters: [filter] }, 'spin', new Set<SignalFamily>(['library']))).toEqual({ ok: false, error: `filter ${filter.id} is not available` });
     }
     expect(parse({ filters: [activity] }, 'pool', new Set<SignalFamily>(['library', 'live'])).filters[0].filter.id).toBe('player-activity');
   });
@@ -521,14 +521,14 @@ describe('/api/roulette routes', () => {
     const response = await modesRoute(new Request('https://qit.test/api/roulette/modes', { headers: headers() }));
     const body = await response.json();
     expect(body).toEqual(modesCatalog());
-    expect(body.modes.map((mode: { id: string }) => mode.id)).toEqual(['pure-random', 'dust-collector', 'something-different', 'comfort-pick', 'rediscovery']);
-    expect(body.modes.every((mode: { requires: string[]; scopes: string[] }) => mode.requires.join() === 'library' && mode.scopes.join() === 'library')).toBe(true);
-    expect(body.scopes).toEqual(['library']);
+    expect(body.modes.map((mode: { id: string }) => mode.id)).toEqual(['pure-random', 'dust-collector', 'something-different', 'comfort-pick', 'alive-and-kicking', 'everyone-owns-it', 'rediscovery']);
+    expect(body.modes.find((mode: { id: string }) => mode.id === 'everyone-owns-it').scopes).toEqual(['friends', 'pair']);
+    expect(body.scopes).toEqual(['library', 'friends', 'pair']);
     expect(body.filters.map((f: { id: string }) => f.id)).toContain('never-played');
     expect(body.filters.map((f: { id: string }) => f.id)).not.toContain('installed');
-    expect(body.filters.map((f: { id: string }) => f.id)).not.toContain('player-activity');
-    expect(body.filters.map((f: { id: string }) => f.id)).not.toContain('shared-with-friends');
-    expect(body.filters).toHaveLength(9);
+    expect(body.filters.map((f: { id: string }) => f.id)).toContain('player-activity');
+    expect(body.filters.map((f: { id: string }) => f.id)).toContain('shared-with-friends');
+    expect(body.filters).toHaveLength(11);
   });
 
   it('offers a filter once its signals have a source', () => {

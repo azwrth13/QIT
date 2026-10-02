@@ -21,7 +21,7 @@ The server now picks the game. `POST /api/roulette/spin` runs the pipeline from 
 4. **Load signals only the mode needs** for the games that survived the filters.
 5. **Score and draw** with the mode (`roll`) and a seeded rng. The seed is the request's `seed` or a fresh `randomSeed()`, and it is returned so the draw can be replayed over the same pool.
 6. **Record the roll** with `recordRoll`. It stores the mode, the validated filters, the scope, the participants, `playtimeAtRoll` (null when Steam hides playtime) and up to 10 reasons, and writes the `roll` event and counters in the same transaction.
-7. **Build the `Card`.** It has the top three reasons, header art (the store signals' art, otherwise the `appMeta` header, otherwise null so the card falls back to the icon), the icon, playtime, last played, the achievement summary, live signals, previous selections (rolls inside the history window before this one), and the store and `steam://run` links. `friends` is null for the library scope.
+7. **Build the `Card`.** It has the top three reasons, header art (the store signals' art, otherwise the `appMeta` header, otherwise null so the card falls back to the icon), the icon, playtime, last played, the achievement summary, live signals, previous selections (rolls inside the history window before this one), and the store and `steam://run` links. `friends` is null in every scope for now: group scopes do not populate owner names or avatars yet.
 
 An empty pool, or a mode that finds nothing eligible, returns `card: null` and records nothing. A roll that cannot be stored, or a header art lookup that fails, is logged, and the card still comes back (`rollId: null` or `header: null`).
 
@@ -33,9 +33,10 @@ An empty pool, or a mode that finds nothing eligible, returns `card: null` and r
 | `store` | the index flag bits. For games with no bits yet, a spin takes at most 1000 of them, most played first (then most recently played), and runs app-metadata's `enrichLibraryFlags` on just those with `maxFetch` 500. That is at most 1000 `appMeta` reads and at most 5 keyless GetItems calls, which run at once (concurrency 5). It patches `f` into the index and then reads the bits back. Scopes outside the library use the `appMeta` cache (`getAppMeta`) with the same bounds and order. A failure never fails the spin: those games stay unknown |
 | `history` | `readExclusions` (one read, with the request's `sessionId` so "Hide for this session" applies) and `recentlyRolled` (one range query of at most 500 rolls). The window is 30 days (D6), or longer when the `exclude-rolled` filter asks for more. `playedAfterRoll` is always false until qit-played-detection lands |
 | `achievements` | the index summary only. There is no Steam scan here: achievements-data owns scanning (D13) |
-| `live`, `group` | no loader yet. qit-player-counts and the group scopes add theirs to `SIGNAL_LOADERS` |
+| `live` | `loadLive` (`roulette/live.ts`); bounds and bands are in `docs/features/qit-modes-multiplayer.md` |
+| `group` | the `friends` and `pair` scope resolvers (`provides`), not a loader |
 
-Pool previews (`fetch: false`) never call Steam: store flags come from the index only.
+Pool previews (`fetch: false`) never call Steam: store flags come from the index only, and live counts and group libraries come from fresh caches only.
 
 `coverage` gives, for each family the stages or the mode read, the share of candidates that had it loaded (0 to 1, four decimals, 1 for an empty list). Stage families are measured over the whole scope. Mode-only families are measured over the filtered pool. An unloaded family is never read as zero. For example, `coverage.store` below 1 means some games could not be checked yet.
 
@@ -54,7 +55,7 @@ Every route needs a session and answers with `Cache-Control: private, no-store` 
   "exclude": [620], "showNonGames": false, "sessionId": "picker-1", "seed": "optional" }
 ```
 
-Only `mode` is required. The scope defaults to the library. Unknown fields, stub modes, stub or invalid filters, a mode or filter that reads a signal family with no source yet (see below), a mode that does not support the scope, more than 500 `exclude` appids, and malformed scopes are rejected with 400. A scope kind with no resolver yet (`friends`, `pair`, `lobby`, `appids`) also gets a 400 ("not available yet").
+Only `mode` is required. The scope defaults to the library. Unknown fields, stub modes, stub or invalid filters, a mode or filter that reads a signal family with no source yet (see below), a mode that does not support the scope, more than 500 `exclude` appids, and malformed scopes are rejected with 400. A scope kind with no resolver yet (`lobby`, `appids`) also gets a 400 ("not available yet").
 
 Response: `{ card, poolSize, coverage, seed, eligible, preview, playtimeHidden }`. `preview` is the filter engine's `PoolPreview`: the total, removals by cause, one step per filter, and the final count.
 
@@ -64,7 +65,7 @@ This takes the same body without `seed`, and `mode` is optional. The response is
 
 ### `GET /api/roulette/modes`
 
-This returns `{ modes, filters, scopes }`: the implemented modes (with the scopes they can use today), the implemented filters with the families they require, and the scope kinds that have a resolver. Stubs are never listed. Neither is a mode or filter that reads a signal family with no source yet. A family has a source when it is `library`, has a loader in `SIGNAL_LOADERS`, or is attached by a scope resolver (`provides`; the library resolver attaches `store` and `achievements`). The spin and pool routes reject such a mode or filter with a 400, and the pipeline rejects one the requested scope cannot source. Today the catalog lists Pure Random and the four playtime modes (Dust Collector, Something Different, Comfort Pick, Rediscovery), nine of the eleven filters, and the `library` scope. `player-activity` (needs `live`) and `shared-with-friends` (needs `group`) appear once qit-player-counts and the group scopes add their sources.
+This returns `{ modes, filters, scopes }`: the implemented modes (with the scopes they can use today), the implemented filters with the families they require, and the scope kinds that have a resolver. Stubs are never listed. Neither is a mode or filter that reads a signal family with no source yet. A family has a source when it is `library`, has a loader in `SIGNAL_LOADERS`, or is attached by a scope resolver (`provides`; the library resolver attaches `store` and `achievements`). The spin and pool routes reject such a mode or filter with a 400, and the pipeline rejects one the requested scope cannot source. Today the catalog lists Pure Random, the four playtime modes (Dust Collector, Something Different, Comfort Pick, Rediscovery), Alive and Kicking, and Everyone Owns It (in the `friends` and `pair` scopes only); all eleven filters; and the `library`, `friends` and `pair` scopes.
 
 ## Extending
 
