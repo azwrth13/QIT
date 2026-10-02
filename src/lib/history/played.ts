@@ -28,13 +28,12 @@ export async function detectPlayedRolls(
   steamId: string,
   library: { games: readonly Game[]; playtimeHidden: boolean },
   now = Date.now(),
-  rolledBefore = now,
 ): Promise<number> {
   if (library.playtimeHidden || !library.games.length) return 0;
   const games = new Map(library.games.map(game => [game.appid, game]));
   const settled = new Set<number>();
   let marked = 0;
-  for (const roll of await recentRolls(steamId, now, rolledBefore)) {
+  for (const roll of await recentRolls(steamId, now)) {
     if (settled.has(roll.appid)) continue;
     if (roll.playedAt) {
       settled.add(roll.appid);

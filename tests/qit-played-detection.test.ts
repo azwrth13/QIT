@@ -35,7 +35,7 @@ describe('sync detection', () => {
     ]);
     const games = [game(620, 110), game(730, 110), game(570, 110)];
     expect(await detectPlayedRolls(steamId, { games, playtimeHidden: false }, 1000)).toBe(1);
-    expect(recentRolls).toHaveBeenCalledWith(steamId, 1000, 1000);
+    expect(recentRolls).toHaveBeenCalledWith(steamId, 1000);
     expect(markPlayed.mock.calls).toEqual([[steamId, 'ten', 'sync', 1000]]);
   });
 
@@ -83,11 +83,6 @@ describe('sync detection', () => {
   it('does no history work for an empty library', async () => {
     expect(await detectPlayedRolls(steamId, { games: [], playtimeHidden: false })).toBe(0);
     expect(recentRolls).not.toHaveBeenCalled();
-  });
-
-  it('restricts detection to rolls predating the Steam snapshot', async () => {
-    await detectPlayedRolls(steamId, { games: [game(620, 110)], playtimeHidden: false }, 2000, 1000);
-    expect(recentRolls).toHaveBeenCalledWith(steamId, 2000, 1000);
   });
 
   it('counts only new marks when another writer wins or the roll disappears', async () => {

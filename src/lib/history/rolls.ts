@@ -198,9 +198,9 @@ export async function markPlayed(steamId: string, rollId: string, source: 'sync'
  * Bounded sync work: one range query on `at`, newest first, with no composite index. Played rolls are included so
  * detection can stop at them. A transaction in `markPlayed` rechecks any concurrent mark.
  */
-export async function recentRolls(steamId: string, now = Date.now(), rolledBefore = now): Promise<RollView[]> {
+export async function recentRolls(steamId: string, now = Date.now()): Promise<RollView[]> {
   const since = Timestamp.fromMillis(now - PLAYED_DETECTION_WINDOW_DAYS * DAY_MS);
-  const snapshot = await rollsRef(steamId).where('at', '>=', since).where('at', '<=', Timestamp.fromMillis(Math.min(now, rolledBefore)))
+  const snapshot = await rollsRef(steamId).where('at', '>=', since).where('at', '<=', Timestamp.fromMillis(now))
     .orderBy('at', 'desc').limit(PLAYED_DETECTION_ROLL_LIMIT).get();
   return snapshot.docs.map(toRollView).filter((roll): roll is RollView => !!roll);
 }

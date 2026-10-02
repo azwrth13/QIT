@@ -63,8 +63,6 @@ export async function ownsGames(steamId: string, appids: number[]): Promise<bool
  * sync leaves the index behind and the next sync redoes the diff. Returns null when Steam does not share the games.
  */
 export async function syncLibrary(steamId: string, profile: SteamProfile): Promise<{ games: Game[]; lastSynced: string; playtimeHidden: boolean } | null> {
-  // Rolls created during the sync may use the previous index; only rolls predating this Steam snapshot qualify.
-  const syncStartedAt = Date.now();
   const owned = await getOwnedGames(steamId);
   if (owned.state === 'private') return null;
   const games = owned.games.map(fromOwnedGame);
@@ -87,7 +85,7 @@ export async function syncLibrary(steamId: string, profile: SteamProfile): Promi
   // All sync callers (refresh and autosync) detect after the index and profile have been persisted. Detection
   // is best effort: a later sync retries against each roll's original baseline even when the library is unchanged.
   try {
-    await detectPlayedRolls(steamId, { games, playtimeHidden }, Date.parse(lastSynced), syncStartedAt);
+    await detectPlayedRolls(steamId, { games, playtimeHidden }, Date.parse(lastSynced));
   } catch (error) {
     logServerError('Played detection failed', error);
   }

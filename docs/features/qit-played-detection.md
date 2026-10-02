@@ -24,7 +24,7 @@ Detection is best effort. Errors use `logServerError('Played detection failed', 
 | `PLAYED_DETECTION_ROLL_LIMIT` | 100 rolls | Caps document reads and potential mark transactions per sync |
 | `THRESHOLDS.playedDeltaMinutes` | 10 minutes | Minimum increase since the roll |
 
-The upper range bound is the sync start time, so rolls created while Steam is being fetched or the index is being written wait for a later sync. Their baseline may come from the previous index. Played timestamps use the sync completion timestamp. There are no additional Steam calls, library reads, composite indexes, or direct writes to rolls/events/stats from the detector.
+The upper range bound is the sync completion time. Played timestamps use the sync completion timestamp. There are no additional Steam calls, library reads, composite indexes, or direct writes to rolls/events/stats from the detector.
 
 The cap includes already played rolls. Older rolls outside either bound require manual marking; this package deliberately does not scan or backfill the whole history. Steam's hidden-playtime heuristic belongs to library-model and remains unchanged. Steam may update totals only after a game closes; detection waits for those totals to appear.
 

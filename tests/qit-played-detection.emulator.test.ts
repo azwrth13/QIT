@@ -159,8 +159,6 @@ describe.skipIf(!emulated)('played detection (emulator)', () => {
     const manual = await recordRoll(steamId, input(), NOW);
     await markPlayed(steamId, manual, 'manual', NOW);
     expect((await recentRolls(steamId, NOW)).map(roll => roll.id)).toEqual([manual, edge]);
-    expect((await recentRolls(steamId, NOW, NOW - 1)).map(roll => roll.id)).toEqual([edge]);
-    expect(await recentRolls(steamId, NOW, NOW - PLAYED_DETECTION_WINDOW_DAYS * DAY - 1)).toEqual([]);
 
     // Fixture history fills the recent cap; no production code writes rolls outside the single writer.
     const batch = db.batch();
@@ -213,19 +211,5 @@ describe.skipIf(!emulated)('played detection (emulator)', () => {
     expect(await syncLibrary(steamId, profileOf(steamId))).toBeNull();
     expect(detector).not.toHaveBeenCalled();
     expect(await playedEvents(steamId)).toEqual([]);
-  });
-
-  it('defers a roll created while Steam is being fetched until a later sync', async () => {
-    const steamId = freshUser();
-    let rollId = '';
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      rollId = await recordRoll(steamId, input(), Date.now() + 1);
-      return Response.json({ response: { game_count: steamGames!.length, games: steamGames } });
-    }));
-    await syncLibrary(steamId, profileOf(steamId));
-    expect((await getRoll(steamId, rollId))!.playedAt).toBeNull();
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ response: { game_count: steamGames!.length, games: steamGames } })));
-    await syncLibrary(steamId, profileOf(steamId));
-    expect((await getRoll(steamId, rollId))!.playedSource).toBe('sync');
   });
 });
