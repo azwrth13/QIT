@@ -35,6 +35,4 @@ A cache miss queries only the user's qualifying event types and reads the refere
 
 Unit tests cover qualifying versus nonqualifying actions, out-of-order events, duplicate IDs, distinct game counters, and future event rejection. Route tests cover session identity, same-origin enforcement, invalid timezone payloads, and private responses. Emulator tests cover consecutive days, missed-day expiry, longest retention, same-day deduplication, replayed challenge completions, both DST transitions, repeated DST hours, local midnight, timezone capture and change, automatic/manual played marks, legacy history, and cache invalidation for late events. The existing event-store, played-detection, and challenge-tracker emulator suites exercise compatibility with their emitters.
 
-The current Vitest setup preserves JSX rather than rendering React components; the presentational widget uses the development fixture gallery, without changing shared test tooling for this package.
-
-Validated locally: 561 unit tests, 84 emulator tests, TypeScript typecheck, and ESLint pass. After the final cache-map replacement change, the 8 streak emulator tests and 7 progression/route unit tests pass again. The emulator used an isolated demo project and task-specific ports; no shared Firebase configuration was changed.
+The emulator used an isolated demo project and task-specific ports; no shared Firebase configuration was changed.
