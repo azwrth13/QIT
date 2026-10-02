@@ -4,7 +4,7 @@ import { db } from '../src/lib/firestore';
 import { detectPlayedRolls } from '../src/lib/history/played';
 import * as played from '../src/lib/history/played';
 import {
-  buildRollRecord, getRoll, markPlayed, markRerolled, recentUnplayedRolls, recordRoll,
+  buildRollRecord, getRoll, markPlayed, markRerolled, recentRolls, recordRoll,
   PLAYED_DETECTION_ROLL_LIMIT, PLAYED_DETECTION_WINDOW_DAYS, type RollInput,
 } from '../src/lib/history/rolls';
 import { readStats } from '../src/lib/history/stats';
@@ -24,6 +24,8 @@ let nextId = 0;
 const freshUser = () => `7656119906${String(Date.now() % 1e5).padStart(5, '0')}${String(nextId++ % 100).padStart(2, '0')}`;
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-09-28T10:00:00Z');
+/** Sync paths bound the window by the real clock, so their fixtures must be recent relative to it. */
+const recently = () => Date.now() - 60_000;
 const input = (overrides: Partial<RollInput> = {}): RollInput => ({
   appid: 620, modeId: 'pure-random', filters: [], scope: { kind: 'library' },
   playtimeAtRoll: 100, reasons: [], ...overrides,
@@ -32,7 +34,7 @@ const profileOf = (steamId: string): SteamProfile => ({
   steamId, personaName: 'Played tester', profileUrl: `https://steamcommunity.com/profiles/${steamId}`,
   avatarFull: 'https://example.test/full.jpg', avatarMedium: 'https://example.test/medium.jpg', public: true,
 });
-let steamGames: Array<{ appid: number; name: string; playtime_forever: number }> | null;
+let steamGames: Array<{ appid: number; name: string; playtime_forever: number; rtime_last_played?: number }> | null;
 const playedEvents = async (steamId: string) =>
   (await db.collection(paths.events(steamId)).where('type', '==', 'played').get()).docs.map(doc => doc.data());
 
@@ -51,10 +53,12 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(
 describe.skipIf(!emulated)('played detection (emulator)', () => {
   it('syncs first, marks at 10 minutes but not 9, and a re-sync never double-counts', async () => {
     const steamId = freshUser();
-    const nine = await recordRoll(steamId, input({ playtimeAtRoll: 101 }), NOW);
-    const ten = await recordRoll(steamId, input(), NOW);
+    const at = recently();
+    const nine = await recordRoll(steamId, input({ appid: 730, playtimeAtRoll: 101 }), at);
+    const ten = await recordRoll(steamId, input(), at);
+    steamGames!.push({ appid: 730, name: 'CS2', playtime_forever: 110 });
     // Played is independent of the user's card decision.
-    await markRerolled(steamId, ten, NOW + 1);
+    await markRerolled(steamId, ten, at + 1);
     const result = await syncLibrary(steamId, profileOf(steamId));
     expect((await getLibrary(steamId)).games).toEqual(result?.games);
     expect(await getRoll(steamId, nine)).toMatchObject({ playedAt: null, playedSource: null });
@@ -69,10 +73,11 @@ describe.skipIf(!emulated)('played detection (emulator)', () => {
 
   it('preserves a manual mark and its event source when a later sync qualifies', async () => {
     const steamId = freshUser();
-    const rollId = await recordRoll(steamId, input(), NOW);
-    await markPlayed(steamId, rollId, 'manual', NOW + 1);
+    const at = recently();
+    const rollId = await recordRoll(steamId, input(), at);
+    await markPlayed(steamId, rollId, 'manual', at + 1);
     await syncLibrary(steamId, profileOf(steamId));
-    expect(await getRoll(steamId, rollId)).toMatchObject({ playedAt: new Date(NOW + 1), playedSource: 'manual' });
+    expect(await getRoll(steamId, rollId)).toMatchObject({ playedAt: new Date(at + 1), playedSource: 'manual' });
     expect(await playedEvents(steamId)).toMatchObject([{ refId: rollId, meta: { source: 'manual' } }]);
     expect((await readStats(steamId)).counters.played).toBe(1);
     expect((await readStats(steamId)).counters['played:source:sync']).toBeUndefined();
@@ -80,7 +85,7 @@ describe.skipIf(!emulated)('played detection (emulator)', () => {
 
   it('hidden playtime provides no signal and does not erase the baseline; a later visible sync qualifies', async () => {
     const steamId = freshUser();
-    const rollId = await recordRoll(steamId, input(), NOW);
+    const rollId = await recordRoll(steamId, input(), recently());
     steamGames = Array.from({ length: 5 }, (_, i) => ({ appid: i ? i * 10 : 620, name: 'Game', playtime_forever: 0 }));
     expect((await syncLibrary(steamId, profileOf(steamId)))?.playtimeHidden).toBe(true);
     expect(await getRoll(steamId, rollId)).toMatchObject({ playedAt: null, playedSource: null, playtimeAtRoll: 100 });
@@ -97,13 +102,43 @@ describe.skipIf(!emulated)('played detection (emulator)', () => {
   it('leaves unknown baselines, missing games and reduced totals pending', async () => {
     const steamId = freshUser();
     const ids = await Promise.all([
-      recordRoll(steamId, input({ playtimeAtRoll: null }), NOW),
-      recordRoll(steamId, input({ appid: 400, playtimeAtRoll: 0 }), NOW),
-      recordRoll(steamId, input({ playtimeAtRoll: 200 }), NOW),
+      recordRoll(steamId, input({ playtimeAtRoll: null }), recently()),
+      recordRoll(steamId, input({ appid: 400, playtimeAtRoll: 0 }), recently()),
+      recordRoll(steamId, input({ appid: 730, playtimeAtRoll: 200 }), recently()),
     ]);
+    steamGames!.push({ appid: 730, name: 'CS2', playtime_forever: 110 });
     await syncLibrary(steamId, profileOf(steamId));
     for (const id of ids) expect((await getRoll(steamId, id))!.playedAt).toBeNull();
     expect(await playedEvents(steamId)).toEqual([]);
+  });
+
+  it('ignores growth Steam last played before the roll, from a stale index baseline', async () => {
+    const steamId = freshUser();
+    const at = recently();
+    // The index still showed 100 when the game was rolled; the 60 minutes were played before the roll.
+    const rollId = await recordRoll(steamId, input(), at);
+    steamGames = [{ appid: 620, name: 'Portal 2', playtime_forever: 160, rtime_last_played: Math.floor(at / 1000) - 600 }];
+    await syncLibrary(steamId, profileOf(steamId));
+    expect((await getRoll(steamId, rollId))!.playedAt).toBeNull();
+    expect(await playedEvents(steamId)).toEqual([]);
+    steamGames[0] = { ...steamGames[0], playtime_forever: 170, rtime_last_played: Math.floor(at / 1000) + 60 };
+    await syncLibrary(steamId, profileOf(steamId));
+    expect((await getRoll(steamId, rollId))!.playedSource).toBe('sync');
+  });
+
+  it('counts one play session once across several rolls of the same game, even on re-sync', async () => {
+    const steamId = freshUser();
+    const at = recently();
+    const older = await recordRoll(steamId, input(), at - 2000);
+    const middle = await recordRoll(steamId, input(), at - 1000);
+    const newest = await recordRoll(steamId, input(), at);
+    await syncLibrary(steamId, profileOf(steamId));
+    await syncLibrary(steamId, profileOf(steamId));
+    expect(await getRoll(steamId, newest)).toMatchObject({ playedSource: 'sync' });
+    expect(await getRoll(steamId, middle)).toMatchObject({ playedAt: null });
+    expect(await getRoll(steamId, older)).toMatchObject({ playedAt: null });
+    expect(await playedEvents(steamId)).toMatchObject([{ refId: newest }]);
+    expect((await readStats(steamId)).counters).toMatchObject({ played: 1, 'played:source:sync': 1 });
   });
 
   it('keeps concurrent detections idempotent through the single writer', async () => {
@@ -123,9 +158,9 @@ describe.skipIf(!emulated)('played detection (emulator)', () => {
     const edge = await recordRoll(steamId, input(), NOW - PLAYED_DETECTION_WINDOW_DAYS * DAY);
     const manual = await recordRoll(steamId, input(), NOW);
     await markPlayed(steamId, manual, 'manual', NOW);
-    expect((await recentUnplayedRolls(steamId, NOW)).map(roll => roll.id)).toEqual([edge]);
-    expect((await recentUnplayedRolls(steamId, NOW, NOW - 1)).map(roll => roll.id)).toEqual([edge]);
-    expect(await recentUnplayedRolls(steamId, NOW, NOW - PLAYED_DETECTION_WINDOW_DAYS * DAY - 1)).toEqual([]);
+    expect((await recentRolls(steamId, NOW)).map(roll => roll.id)).toEqual([manual, edge]);
+    expect((await recentRolls(steamId, NOW, NOW - 1)).map(roll => roll.id)).toEqual([edge]);
+    expect(await recentRolls(steamId, NOW, NOW - PLAYED_DETECTION_WINDOW_DAYS * DAY - 1)).toEqual([]);
 
     // Fixture history fills the recent cap; no production code writes rolls outside the single writer.
     const batch = db.batch();
@@ -140,14 +175,14 @@ describe.skipIf(!emulated)('played detection (emulator)', () => {
       sizes.push(snapshot.size);
       return snapshot;
     });
-    const recent = await recentUnplayedRolls(steamId, NOW);
+    const recent = await recentRolls(steamId, NOW);
     expect(sizes).toEqual([PLAYED_DETECTION_ROLL_LIMIT]);
-    expect(recent.some(roll => [old, future, edge, manual].includes(roll.id))).toBe(false);
+    expect(recent.some(roll => [old, future, edge].includes(roll.id))).toBe(false);
   });
 
   it('the sync route succeeds and persists its library even when detection fails; the next sync retries', async () => {
     const steamId = freshUser();
-    const rollId = await recordRoll(steamId, input(), NOW);
+    const rollId = await recordRoll(steamId, input(), recently());
     getSteamId.mockResolvedValue(steamId);
     getSteamProfile.mockResolvedValue(profileOf(steamId));
     const realDetect = played.detectPlayedRolls;
@@ -172,7 +207,7 @@ describe.skipIf(!emulated)('played detection (emulator)', () => {
 
   it('does not detect for a private library', async () => {
     const steamId = freshUser();
-    await recordRoll(steamId, input(), NOW);
+    await recordRoll(steamId, input(), recently());
     steamGames = null;
     const detector = vi.spyOn(played, 'detectPlayedRolls');
     expect(await syncLibrary(steamId, profileOf(steamId))).toBeNull();
