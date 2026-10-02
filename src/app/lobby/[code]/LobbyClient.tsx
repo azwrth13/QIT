@@ -5,7 +5,8 @@ import type { LobbyView } from '@/lib/lobby/model';
 
 export default function LobbyClient({ code, steamId }: { code: string; steamId: string }) {
   const [lobby, setLobby] = useState<LobbyView | null>(null);
-  const [error, setError] = useState('');
+  const [pollError, setPollError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
   const version = useRef<number | undefined>(undefined);
   const endpoint = `/api/lobby/${code}`;
@@ -30,8 +31,8 @@ export default function LobbyClient({ code, steamId }: { code: string; steamId: 
             version.current = result.lobby.version; setLobby(result.lobby);
           }
         }
-        if (!stopped) setError('');
-      } catch (cause) { if (!stopped) setError(cause instanceof Error ? cause.message : 'Could not load lobby.'); }
+        if (!stopped) setPollError('');
+      } catch (cause) { if (!stopped) setPollError(cause instanceof Error ? cause.message : 'Could not load lobby.'); }
       finally { running = false; if (!stopped) schedule(); }
     }
     const visibility = () => { clearTimeout(timer); if (!running) { if (document.hidden) schedule(); else void poll(); } };
@@ -41,7 +42,7 @@ export default function LobbyClient({ code, steamId }: { code: string; steamId: 
   }, [endpoint]);
 
   async function mutate(method: 'POST' | 'DELETE' | 'PATCH', body?: unknown) {
-    setBusy(true); setError('');
+    setBusy(true); setActionError('');
     try {
       const response = await fetch(`${endpoint}${method === 'POST' ? '/join' : ''}`, {
         method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -51,7 +52,7 @@ export default function LobbyClient({ code, steamId }: { code: string; steamId: 
       if (version.current === undefined || result.lobby.version >= version.current) {
         version.current = result.lobby.version; setLobby(result.lobby);
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update lobby.'); }
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not update lobby.'); }
     finally { setBusy(false); }
   }
 
@@ -61,8 +62,9 @@ export default function LobbyClient({ code, steamId }: { code: string; steamId: 
   return <main className="container mx-auto p-8 text-black">
     <h1 className="text-3xl font-bold">Game Night Lobby {code}</h1>
     <p className="my-4">Share this page’s link with your friends. Up to eight players can join.</p>
-    {error && <p role="alert" className="my-4">{error}</p>}
-    {!lobby && !error && <p>Loading lobby…</p>}
+    {pollError && <p role="alert" className="my-4">{pollError}</p>}
+    {actionError && <p role="alert" className="my-4">{actionError}</p>}
+    {!lobby && !pollError && <p>Loading lobby…</p>}
     {lobby && <>
       {!active && <p>This lobby has ended.</p>}
       <p className="my-4">{lobby.commonCount} games in common · {lobby.filteredCount} match shared filters</p>

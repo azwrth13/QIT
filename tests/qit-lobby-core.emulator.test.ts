@@ -45,6 +45,19 @@ describe.skipIf(!emulated)('transactional lobby core (emulator)', () => {
     expect((await db.doc(paths.lobbyCommonChunk(created.code, 0)).get()).exists).toBe(false);
   });
 
+  it('orders members by join time and transfers host to the earliest remaining joiner', async () => {
+    const later = id(), earlier = id(), host = id();
+    let clock = Date.now();
+    const deps = { libraries, now: () => clock };
+    const created = await createLobby(host, deps);
+    clock += 1000;
+    await joinLobby(created.code, earlier, id(), deps);
+    clock += 1000;
+    const joined = await joinLobby(created.code, later, id(), deps);
+    expect(joined.members.map(m => m.steamId)).toEqual([host, earlier, later]);
+    expect(await leaveLobby(created.code, host, deps)).toMatchObject({ hostId: earlier, members: [{ steamId: earlier }, { steamId: later }] });
+  });
+
   it('uses the merged getLibraryFor and intersect with actual QIT library indexes', async () => {
     const host = id(), guest = id();
     for (const steamId of [host, guest]) await db.doc(paths.user(steamId)).set({ public: true, lastSyncedAt: new Date().toISOString() });

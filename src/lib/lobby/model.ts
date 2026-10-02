@@ -34,7 +34,9 @@ export function lobbyView(code: string, record: LobbyRecord): LobbyView {
   return {
     code, hostId: record.hostId, version: record.version, status: record.status,
     expiresAt: record.expiresAt.toMillis(), filters: record.filters,
-    members: Object.entries(record.members).map(([steamId, member]) => ({
+    members: Object.entries(record.members)
+      .sort(([a, x], [b, y]) => x.joinedAt.toMillis() - y.joinedAt.toMillis() || (a < b ? -1 : a > b ? 1 : 0))
+      .map(([steamId, member]) => ({
       steamId, name: member.name, avatar: member.avatar, state: member.state, libraryState: member.libraryState, playtimeHidden: member.playtimeHidden,
     })),
     commonCount: record.commonCount, filteredCount: record.filteredCount, filterUnknownCount: record.filterUnknownCount,

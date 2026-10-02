@@ -33,8 +33,8 @@ requests do not increment it. Successful active-lobby mutations refresh the six-
 polls do not. At the deadline, a reader or mutation transaction marks the lobby
 expired and increments once. Attempts to mutate an ended lobby return HTTP 410.
 An expired lobby remains readable as an ended snapshot. When the last member
-leaves the lobby closes; when the host leaves, the first remaining member in the
-member list becomes host.
+leaves the lobby closes. The member list is ordered by join time (Steam ID breaks
+ties); when the host leaves, the earliest remaining joiner becomes host.
 
 Codes are six cryptographically random characters from
 `23456789ABCDEFGHJKMNPQRSTUVWXYZ` (31 symbols). Lowercase input is normalized.
