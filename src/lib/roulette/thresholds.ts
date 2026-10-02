@@ -20,6 +20,7 @@ export const THRESHOLDS: Readonly<Thresholds> = Object.freeze({
   // Finish Something weights games from this completion upward.
   finishSomethingPreferPercent: 60,
   manyRemainingLocked: 25,
+  finishSomethingFewRemaining: 5,
   rareTiersPercent: Object.freeze([25, 10, 5]),
   // Absolute floor for "active"; bands are relative to the pool (high >= P75, low <= P25).
   activeMinPlayers: 100,

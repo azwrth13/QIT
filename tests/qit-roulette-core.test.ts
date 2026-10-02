@@ -4,7 +4,7 @@ import { THRESHOLDS } from '../src/lib/roulette/thresholds';
 import { composeSeed, createRng, randomSeed, weightedSample, type Rng } from '../src/lib/roulette/sampler';
 import { CARD_REASON_LIMIT, REASON_CODES, isReasonCode, orderReasons, parseReason, reason, renderReason, renderReasons } from '../src/lib/roulette/reasons';
 import { ModeScopeError, drawScored, roll, scoreCandidates } from '../src/lib/roulette/scoring';
-import { StubNotImplementedError } from '../src/lib/roulette/stubs';
+import { stubMode, StubNotImplementedError } from '../src/lib/roulette/stubs';
 import { getMode } from '../src/lib/roulette/modes';
 
 const candidate = (appid: number, playtimeForever = 0): Candidate => ({
@@ -184,7 +184,7 @@ describe('scoring', () => {
   });
 
   it('refuses stub modes and scopes the mode does not support', () => {
-    expect(() => scoreCandidates(getMode('achievement-hunter'), [], ctx())).toThrow(StubNotImplementedError);
+    expect(() => scoreCandidates(stubMode({ id: 'pure-random', label: 'Test stub', description: 'Test stub', requires: ['library'] }), [], ctx())).toThrow(StubNotImplementedError);
     expect(() => scoreCandidates(byPlaytime, [candidate(1, 5)], ctx({ kind: 'pair', with: '76561198000000001' }))).toThrow(ModeScopeError);
   });
 
