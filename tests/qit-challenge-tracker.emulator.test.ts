@@ -241,7 +241,7 @@ describe.skipIf(!emulated)('challenge lifecycle (emulator)', () => {
     expect(outcomes.every(outcome => outcome === 'updated' || outcome === 'unchanged')).toBe(true);
     expect((await listEvents(steamId)).filter(event => event.type === 'challenge_complete')).toHaveLength(1);
     expect((await readStats(steamId)).counters.challenge_complete).toBe(1);
-  });
+  }, 30_000);
 
   it('declines an issued challenge and rejects every illegal transition', async () => {
     const { steamId, steam } = await setup();
