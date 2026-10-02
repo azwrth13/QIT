@@ -1,7 +1,8 @@
 import type { WriteBatch } from 'firebase-admin/firestore';
 import { db } from '../firestore';
 import type { Game } from '../games';
-import type { SteamProfile } from '../steam';
+import { logServerError, type SteamProfile } from '../steam';
+import { detectPlayedRolls } from '../history/played';
 import { getOwnedGames } from '../steam/owned';
 import { patchLibIndex, readLibIndex, removeFromLibIndex } from '../store/lib-index';
 import { paths } from '../store/paths';
@@ -81,5 +82,12 @@ export async function syncLibrary(steamId: string, profile: SteamProfile): Promi
   const lastSynced = new Date().toISOString();
   const playtimeHidden = detectPlaytimeHidden(games);
   await db.doc(paths.user(steamId)).set({ ...profile, lastSyncedAt: lastSynced, flags: { playtimeHidden } }, { merge: true });
+  // All sync callers (refresh and autosync) detect after the index and profile have been persisted. Detection
+  // is best effort: a later sync retries against each roll's original baseline even when the library is unchanged.
+  try {
+    await detectPlayedRolls(steamId, { games, playtimeHidden }, Date.parse(lastSynced));
+  } catch (error) {
+    logServerError('Played detection failed', error);
+  }
   return { games: games.sort(byAppId), lastSynced, playtimeHidden };
 }

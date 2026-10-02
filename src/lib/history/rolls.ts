@@ -19,6 +19,9 @@ export const MAX_ROLL_PARTICIPANTS = 32;
 export const MAX_ROLLS_PAGE = 50;
 /** Upper bound on the rolls read by `recentlyRolled`. */
 export const RECENT_ROLLS_LIMIT = 500;
+/** Sync detection considers only this recent window, capped before filtering played rolls. */
+export const PLAYED_DETECTION_WINDOW_DAYS = 30;
+export const PLAYED_DETECTION_ROLL_LIMIT = 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface RollInput {
@@ -189,6 +192,17 @@ export async function markPlayed(steamId: string, rollId: string, source: 'sync'
     if (roll.playedAt) return 'unchanged';
     return { fields: { playedAt: at, playedSource: source }, event: { type: 'played', meta: { source } } };
   });
+}
+
+/**
+ * Bounded sync work: one range query on `at`, newest first, with no composite index. Played rolls are included so
+ * detection can stop at them. A transaction in `markPlayed` rechecks any concurrent mark.
+ */
+export async function recentRolls(steamId: string, now = Date.now()): Promise<RollView[]> {
+  const since = Timestamp.fromMillis(now - PLAYED_DETECTION_WINDOW_DAYS * DAY_MS);
+  const snapshot = await rollsRef(steamId).where('at', '>=', since).where('at', '<=', Timestamp.fromMillis(now))
+    .orderBy('at', 'desc').limit(PLAYED_DETECTION_ROLL_LIMIT).get();
+  return snapshot.docs.map(toRollView).filter((roll): roll is RollView => !!roll);
 }
 
 export interface RecentRoll {
