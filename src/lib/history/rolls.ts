@@ -190,7 +190,7 @@ export async function markPlayed(steamId: string, rollId: string, source: 'sync'
   if (source !== 'sync' && source !== 'manual') throw new Error('Invalid played source');
   return transition(steamId, rollId, now, (roll, at) => {
     if (roll.playedAt) return 'unchanged';
-    return { fields: { playedAt: at, playedSource: source }, event: { type: 'played', meta: { source } } };
+    return { fields: { playedAt: at, playedSource: source }, event: { type: 'played', meta: { source, playtimeAtRoll: roll.playtimeAtRoll } } };
   });
 }
 

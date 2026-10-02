@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase-admin/firestore';
+import type { Progression } from '../history/progression';
 import type { FilterSelection, ModeId, Reason, Scope } from '../roulette/types';
 
 // Record shapes for the collections in `paths.ts`. New time fields are Firestore `Timestamp`s
@@ -127,6 +128,8 @@ export interface ExclusionsRecord {
 export interface StatsSummaryRecord {
   counters: Record<string, number>;
   streak?: { current: number; longest: number; lastDay?: string };
+  eventRevision?: number;
+  progressionCache?: { revision: number; tz: string; day: string; at: number; nextEventAt: number | null; value: Progression };
   updatedAt: Timestamp;
 }
 

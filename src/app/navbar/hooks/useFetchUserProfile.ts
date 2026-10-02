@@ -6,6 +6,7 @@ export interface UserProfile {
   personaName: string;
   profileUrl: string;
   avatarFull: string;
+  tz?: string;
 }
 
 export const useFetchUserProfile = () => {
@@ -24,6 +25,17 @@ export const useFetchUserProfile = () => {
       }
       const data = await response.json();
       setProfile(data);
+      if (!data.tz) {
+        // Best-effort profile setting; a failed capture must not hide an otherwise valid profile.
+        try {
+          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          const saved = await fetch('/api/user/profile', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tz }),
+          });
+          if (saved.ok) setProfile({ ...data, tz: (await saved.json()).tz });
+        } catch { /* Retry on the next profile load. */ }
+      }
     } catch (err) {
       if ((err as Error).message !== 'Not authenticated. Steam ID is missing.') setError((err as Error).message);
       setProfile(null);

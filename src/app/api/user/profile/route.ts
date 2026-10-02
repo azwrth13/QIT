@@ -1,3 +1,6 @@
+import { checkRateLimit, checkSameOrigin, createLimiter, errorResponse, jsonResponse, readJsonBody } from '@/lib/http/guards';
+import { isValidTimeZone } from '@/lib/history/time';
+import { setProfileTimeZone } from '@/lib/profile/timezone';
 import { NextResponse } from 'next/server';
 import { getSteamId } from '@/lib/auth';
 import { logServerError } from '@/lib/steam';
@@ -13,5 +16,28 @@ export async function GET() {
   } catch (error) {
     logServerError('Profile lookup failed', error);
     return NextResponse.json({ error: 'Unable to load Steam profile.' }, { status: 502 });
+  }
+}
+
+const timezoneLimits = { user: createLimiter({ capacity: 10, refillPerSecond: 0.1 }), ip: createLimiter({ capacity: 40, refillPerSecond: 1 }) };
+
+/** Stores the browser zone once; an existing zone is kept. */
+export async function PATCH(req: Request) {
+  const steamId = await getSteamId();
+  if (!steamId) return errorResponse('unauthenticated', 'Authentication required');
+  const denied = checkSameOrigin(req) ?? checkRateLimit(req, steamId, timezoneLimits);
+  if (denied) return denied;
+  const parsed = await readJsonBody(req, 512);
+  if ('response' in parsed) return parsed.response;
+  const body = parsed.body as { tz?: unknown } | null;
+  if (!body || !isValidTimeZone(body.tz)) {
+    return errorResponse('invalid', 'A valid IANA timezone is required');
+  }
+  try {
+    const tz = await setProfileTimeZone(steamId, body.tz);
+    return tz === null ? jsonResponse({ error: { code: 'not_found', message: 'Profile not found' } }, 404) : jsonResponse({ tz });
+  } catch (error) {
+    logServerError('Timezone update failed', error);
+    return errorResponse('unavailable', 'Unable to save timezone');
   }
 }
