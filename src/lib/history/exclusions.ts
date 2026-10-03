@@ -17,8 +17,6 @@ export const EXCLUSION_SCOPES: readonly ExclusionScope[] = ['session', 'day', '7
  * keeps it far below Firestore's 40,000 index entries and 1 MiB per document.
  */
 export const MAX_EXCLUSIONS = 1000;
-/** Legacy session timeout; new session hides end explicitly, or stop applying when the session id changes. */
-export const SESSION_EXCLUSION_MS = 12 * 60 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
