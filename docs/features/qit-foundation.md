@@ -1,6 +1,6 @@
 # Foundation: roulette contracts, registries, nav flags and test plumbing
 
-Shared contracts that later packages build against. Nothing here changes behavior yet: every mode and filter starts as a stub (see `docs/features/qit-roulette-core.md` for Pure Random, the first real mode, and `docs/features/qit-filter-engine.md` for the filters, which are all implemented), and the navbar still shows only Home and Library.
+Shared contracts that later packages build against. Nothing here changes behavior yet: every mode and filter starts as a stub (see `docs/features/qit-roulette-core.md` for Pure Random, the first real mode, and `docs/features/qit-filter-engine.md` for the filters, which are all implemented), and the navbar shows only the surfaces whose packages have flipped their own flag.
 
 ## Roulette contracts (`src/lib/roulette/`)
 

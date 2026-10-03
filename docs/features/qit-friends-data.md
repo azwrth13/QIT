@@ -30,7 +30,7 @@ When `GetFriendList` says the list is private (a JSON 401, as recorded in `qit-s
 
 Pinned players are ignored while the friends list is public.
 
-`POST /api/steam/friends/pinned` with `{ "player": "<profile URL | 17-digit ID | vanity name>" }` pins a player and returns `{ player, pinned }`. `DELETE /api/steam/friends/pinned?steamid=<id>` unpins and returns `{ pinned }`. Both need a session and a same-origin request, and share a per-user (10 burst, 10 a minute) and per-IP (30 burst, 30 a minute) limit; errors use the standard envelope from `route-guards`. A player who cannot be found, the user themselves, invalid input and the limit of 50 pins come back as 400 `invalid` with a message; Steam failures are 502. The player must exist on Steam when pinned. Adding the friend dashboard's "add player" box is that package's job.
+`POST /api/steam/friends/pinned` with `{ "player": "<profile URL | 17-digit ID | vanity name>" }` pins a player and returns `{ player, pinned }`. `DELETE /api/steam/friends/pinned?steamid=<id>` unpins and returns `{ pinned }`. Both need a session and a same-origin request, and share a per-user (10 burst, 10 a minute) and per-IP (30 burst, 30 a minute) limit; errors use the standard envelope from `route-guards`. A player who cannot be found, the user themselves, invalid input and the limit of 50 pins come back as 400 `invalid` with a message; Steam failures are 502. The player must exist on Steam when pinned. The friend dashboard's pin form uses these routes (see `qit-friend-dashboard.md`).
 
 ## `getLibraryFor(ids)`
 
