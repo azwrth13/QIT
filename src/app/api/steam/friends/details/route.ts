@@ -1,6 +1,5 @@
 import { getSteamId } from '@/lib/auth';
 import { checkRateLimit, checkSameOrigin, createLimiter, errorResponse, jsonResponse, parseSteamId, readJsonBody } from '@/lib/http/guards';
-import { dashboardSteamClient } from '@/lib/social/dashboard-budget';
 import { getFriends } from '@/lib/social/friends';
 import { getSharedDetails } from '@/lib/social/dashboard';
 import { getRecentDetails } from '@/lib/social/recent';
@@ -22,7 +21,7 @@ export async function POST(req: Request) {
     return errorResponse('invalid', 'Choose a player and shared games or recent activity.');
   }
   try {
-    const list = await getFriends(requester, { client: dashboardSteamClient });
+    const list = await getFriends(requester);
     if (!list.friends.some(friend => friend.steamId === player)) return errorResponse('forbidden', 'Choose a Steam friend or pin this player first.');
     return jsonResponse(body.kind === 'shared' ? await getSharedDetails(requester, player, body.includeGames === true) : await getRecentDetails(player));
   } catch (error) {

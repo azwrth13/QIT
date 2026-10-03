@@ -1,12 +1,11 @@
 import { intersect } from '../group/libraries';
 import { readLibIndex } from '../store/lib-index';
-import { dashboardSteamClient } from './dashboard-budget';
 import { getSteamLibrary } from './libraries';
 import { PRIVATE_GAMES_MESSAGE, type SharedDetails } from './dashboard-types';
 
 /** Called for one visible card, or an explicit shared-games action; never for the complete friend list. */
 export async function getSharedDetails(requester: string, player: string, includeGames: boolean): Promise<SharedDetails> {
-  const friend = await getSteamLibrary(player, { client: dashboardSteamClient });
+  const friend = await getSteamLibrary(player);
   if (friend.state !== 'ok') return {
     state: friend.state,
     message: friend.state === 'private' ? PRIVATE_GAMES_MESSAGE : friend.state === 'not_found'

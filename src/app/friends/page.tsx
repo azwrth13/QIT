@@ -12,7 +12,6 @@ export default function FriendsPage() {
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [player, setPlayer] = useState('');
   const [pinning, setPinning] = useState(false);
@@ -40,8 +39,8 @@ export default function FriendsPage() {
     try { await requestJson(`/api/steam/friends/pinned?steamid=${id}`, undefined, 'DELETE'); await load(); }
     catch (error) { setError((error as Error).message); }
   }
-  const filtered = (result?.friends ?? []).filter(friend => `${friend.personaName} ${friend.steamId}`.toLowerCase().includes(search.toLowerCase()));
-  const currentPage = Math.min(page, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1));
+  const friends = result?.friends ?? [];
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(friends.length / PAGE_SIZE) - 1));
   const fallback = result?.source === 'pinned' || result?.message?.includes('private');
   return <div className="container mx-auto px-4 py-8 text-black">
     <BrowserWindow title="PLAY WITH FRIENDS" className="mb-8">
@@ -62,15 +61,13 @@ export default function FriendsPage() {
         <div className="flex flex-wrap gap-2"><input id="pin-player" required maxLength={200} value={player} onChange={event => setPlayer(event.target.value)} className="border-2 border-black p-2 min-w-0 flex-1" />
           <button disabled={pinning} className="border-2 border-black p-2 font-bold disabled:opacity-50">{pinning ? 'Pinning…' : 'Pin player'}</button></div>
       </form>}
-      <label htmlFor="friend-search" className="font-bold">Find a player</label>
-      <input id="friend-search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} className="block border-2 border-black p-2 w-full mb-6" />
-      {!filtered.length && <p>No players found. {fallback ? 'Pin a player above to get started.' : 'Try a different search.'}</p>}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">{filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(friend =>
+      {!friends.length && <p>No players found. {fallback ? 'Pin a player above to get started.' : 'Your Steam friends will appear here.'}</p>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">{friends.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(friend =>
         <FriendCard key={friend.steamId} friend={friend} pinned={result.source === 'pinned'} selected={selected} onUnpin={unpin} />)}</div>
-      {filtered.length > PAGE_SIZE && <nav aria-label="Friend pages" className="flex justify-center gap-4 my-6">
+      {friends.length > PAGE_SIZE && <nav aria-label="Friend pages" className="flex justify-center gap-4 my-6">
         <button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="border-2 border-black px-3 py-2 disabled:opacity-50">Previous</button>
-        <span className="self-center">Page {currentPage + 1} of {Math.ceil(filtered.length / PAGE_SIZE)}</span>
-        <button disabled={(currentPage + 1) * PAGE_SIZE >= filtered.length} onClick={() => setPage(currentPage + 1)} className="border-2 border-black px-3 py-2 disabled:opacity-50">Next</button>
+        <span className="self-center">Page {currentPage + 1} of {Math.ceil(friends.length / PAGE_SIZE)}</span>
+        <button disabled={(currentPage + 1) * PAGE_SIZE >= friends.length} onClick={() => setPage(currentPage + 1)} className="border-2 border-black px-3 py-2 disabled:opacity-50">Next</button>
       </nav>}
     </>}
   </div>;

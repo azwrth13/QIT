@@ -22,8 +22,6 @@ export const COLLECTIONS = {
   appCharts: 'appCharts',
   appAchievements: 'appAchievements',
   publicLibraries: 'publicLibraries',
-  publicRecentPlays: 'publicRecentPlays',
-  steamBudget: 'steamBudget',
   lobbies: 'lobbies',
   common: 'common',
   lobbyLimits: 'lobbyLimits',
@@ -73,8 +71,6 @@ export const paths = {
   achievementProgress: (steamId: string) => `${user(steamId)}/${C.achievementProgress}`,
   achievementProgressDoc: (steamId: string, appid: number) =>
     `${user(steamId)}/${C.achievementProgress}/${appIdSegment(appid)}`,
-  steamBudget: (day: string) => `${C.steamBudget}/${dateSegment(day)}`,
-  publicRecentPlays: (steamId: string) => `${C.publicRecentPlays}/${steamIdSegment(steamId)}`,
   friendsMeta: (steamId: string) => `${user(steamId)}/${C.meta}/friends`,
   pinnedMeta: (steamId: string) => `${user(steamId)}/${C.meta}/pinned`,
   achievementsMeta: (steamId: string) => `${user(steamId)}/${C.meta}/achievements`,
