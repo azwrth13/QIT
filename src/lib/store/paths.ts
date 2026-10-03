@@ -79,6 +79,7 @@ export const paths = {
   events: (steamId: string) => `${user(steamId)}/${C.events}`,
   event: (steamId: string, eventId: string) => `${user(steamId)}/${C.events}/${docIdSegment(eventId)}`,
   exclusions: (steamId: string) => `${user(steamId)}/${C.prefs}/exclusions`,
+  antiRepeat: (steamId: string) => `${user(steamId)}/${C.prefs}/antiRepeat`,
   statsSummary: (steamId: string) => `${user(steamId)}/${C.stats}/summary`,
   dailies: (steamId: string) => `${user(steamId)}/${C.daily}`,
   daily: (steamId: string, date: string) => `${user(steamId)}/${C.daily}/${dateSegment(date)}`,
