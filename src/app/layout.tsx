@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import Navbar from "./navbar/navbar";
 import './globals.css';
 import { Press_Start_2P, Space_Grotesk } from 'next/font/google';
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </main>
           <footer className="border-t-4 border-black py-6 mt-12 bg-neobrutal-yellow">
             <div className="container mx-auto px-4 text-center">
+              <Link href="/privacy" className="inline-block mb-2 font-bold underline">Privacy &amp; data controls</Link>
               <p className="text-sm font-bold">© {new Date().getFullYear()} Qit. All rights reserved.</p>
             </div>
           </footer>
