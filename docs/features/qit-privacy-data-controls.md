@@ -1,6 +1,6 @@
 # Privacy policy and data controls
 
-`/privacy` is a public, dynamic page with an account-data panel for signed-in users. Only the privacy nav flag is enabled; the footer links to it. No README, hosting, short-link or session implementation changes.
+`/privacy` is a public, dynamic page with an account-data panel for signed-in users. Only the privacy nav flag is enabled; the footer links to it. No hosting, short-link or session implementation changes.
 
 ## Interfaces
 
