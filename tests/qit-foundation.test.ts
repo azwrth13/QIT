@@ -70,7 +70,7 @@ describe('nav items', () => {
   it('keep today\'s navbar until a surface flips its own flag', () => {
     expect(navbarItems(false).map(item => item.href)).toEqual(['/', '/library']);
     expect(navbarItems(true).map(item => item.href)).toEqual(['/', '/library']);
-    expect(NAV_ITEMS.filter(item => item.enabled).map(item => item.id)).toEqual(['home', 'library']);
+    expect(NAV_ITEMS.filter(item => item.enabled).map(item => item.id)).toEqual(['home', 'library', 'privacy']);
     expect(isNavEnabled('library')).toBe(true);
     expect(isNavEnabled('friend-night')).toBe(false);
   });

@@ -29,7 +29,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'rare-challenge', href: '/rare-challenge', label: 'Rare Challenge', enabled: false, requiresAuth: true, inNavbar: true },
   { id: 'history', href: '/history', label: 'History', enabled: false, requiresAuth: true, inNavbar: true },
   { id: 'profile', href: '/profile', label: 'Stats', enabled: false, requiresAuth: true, inNavbar: true },
-  { id: 'privacy', href: '/privacy', label: 'Privacy', enabled: false, requiresAuth: false, inNavbar: false },
+  { id: 'privacy', href: '/privacy', label: 'Privacy', enabled: true, requiresAuth: false, inNavbar: false },
 ];
 
 export function isNavEnabled(id: NavItemId): boolean {
