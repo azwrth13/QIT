@@ -17,8 +17,6 @@ export const EXCLUSION_SCOPES: readonly ExclusionScope[] = ['session', 'day', '7
  * keeps it far below Firestore's 40,000 index entries and 1 MiB per document.
  */
 export const MAX_EXCLUSIONS = 1000;
-/** A session never outlives this, so abandoned sessions' entries are pruned even if nobody ends them. */
-export const SESSION_EXCLUSION_MS = 12 * 60 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -32,7 +30,7 @@ export class ExclusionLimitError extends Error {
 export interface Exclusion {
   appid: number;
   scope: ExclusionScope;
-  /** null for `forever`. */
+  /** null for session and permanent hides. */
   until: Date | null;
   sessionId: string | null;
   at: Date;
@@ -44,7 +42,7 @@ function toEntry(raw: unknown): Entry | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Record<string, unknown>;
   if (!EXCLUSION_SCOPES.includes(value.scope as ExclusionScope) || !(value.at instanceof Timestamp)) return null;
-  if (value.scope !== 'forever' && !(value.until instanceof Timestamp)) return null;
+  if ((value.scope === 'day' || value.scope === '7d') && !(value.until instanceof Timestamp)) return null;
   if (value.scope === 'session' && typeof value.sessionId !== 'string') return null;
   const entry: Entry = { scope: value.scope as ExclusionScope, at: value.at };
   if (value.until instanceof Timestamp) entry.until = value.until;
@@ -52,7 +50,7 @@ function toEntry(raw: unknown): Entry | null {
   return entry;
 }
 
-const isLive = (entry: Entry, now: number) => entry.scope === 'forever' || (!!entry.until && entry.until.toMillis() > now);
+const isLive = (entry: Entry, now: number) => entry.scope === 'forever' || (entry.scope === 'session' && !entry.until) || (!!entry.until && entry.until.toMillis() > now);
 
 /** Keeps well-formed, unexpired entries with valid appid keys. Pure; exported for tests. */
 export function liveEntries(data: Record<string, unknown> | undefined, now: number): Map<string, Entry> {
@@ -64,10 +62,10 @@ export function liveEntries(data: Record<string, unknown> | undefined, now: numb
   return entries;
 }
 
-/** When an exclusion made at `now` ends; null for `forever`. `tz` is the user's IANA zone (UTC when missing). Pure. */
+/** When an exclusion made at `now` ends; null for session and permanent hides. `tz` is the user's IANA zone (UTC when missing). Pure. */
 export function exclusionUntil(scope: ExclusionScope, now: number, tz?: string): number | null {
   switch (scope) {
-    case 'session': return now + SESSION_EXCLUSION_MS;
+    case 'session': return null;
     case 'day': return endOfLocalDay(now, tz);
     case '7d': return now + SEVEN_DAYS_MS;
     case 'forever': return null;
@@ -99,13 +97,13 @@ export async function addExclusion(
   if (scope === 'session' ? !SESSION_ID.test(sessionId ?? '') : sessionId !== undefined) throw new Error('Invalid session ID');
   const until = exclusionUntil(scope, now, tz);
   const entry: Entry = { scope, at: Timestamp.fromMillis(now) };
-  if (until !== null) entry.until = Timestamp.fromMillis(until);
+  if (until !== null && scope !== 'session') entry.until = Timestamp.fromMillis(until);
   if (sessionId !== undefined) entry.sessionId = sessionId;
   const ref = exclusionsRef(steamId);
   const stored = await runTransaction(async tx => {
     const entries = liveEntries((await tx.get(ref)).data(), now);
     const existing = entries.get(key);
-    if (existing?.scope === 'forever') return existing;
+    if (existing?.scope === 'forever' || (existing?.scope === scope && existing.sessionId === sessionId)) return existing;
     entries.delete(key);
     if (entries.size >= MAX_EXCLUSIONS) throw new ExclusionLimitError();
     entries.set(key, entry);
@@ -142,4 +140,28 @@ export async function readExclusions(steamId: string, { sessionId, now = Date.no
     active.set(Number(appid), toExclusion(appid, entry));
   }
   return active;
+}
+
+/** Management view includes session entries, even when another picker session is current. */
+export async function listExclusions(steamId: string, now = Date.now()): Promise<Exclusion[]> {
+  return [...liveEntries((await exclusionsRef(steamId).get()).data(), now)]
+    .map(([appid, entry]) => toExclusion(appid, entry));
+}
+
+/** Ends only this user's picker/lobby session hides. Safe to repeat. */
+export async function endExclusionSession(steamId: string, sessionId: string, now = Date.now()): Promise<number> {
+  if (!SESSION_ID.test(sessionId)) throw new Error('Invalid session ID');
+  const ref = exclusionsRef(steamId);
+  return runTransaction(async tx => {
+    const entries = liveEntries((await tx.get(ref)).data(), now);
+    let removed = 0;
+    for (const [appid, entry] of entries) {
+      if (entry.scope !== 'session' || entry.sessionId !== sessionId) continue;
+      entries.delete(appid);
+      removed++;
+      stageEvent(tx, steamId, { type: 'unexclude', appid: Number(appid), meta: { sessionId } }, now);
+    }
+    if (removed) tx.set(ref, Object.fromEntries(entries));
+    return removed;
+  });
 }

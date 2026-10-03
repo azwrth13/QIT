@@ -105,6 +105,7 @@ export default function Library() {
       {!loading && !unauthorized && (
         <div className="mb-6 flex flex-wrap items-center gap-4">
           <button onClick={refresh} disabled={refreshing} className="bg-neobrutal-green border-4 border-black shadow-neobrutal text-black font-bold px-4 py-2 disabled:opacity-50">{refreshing ? 'Refreshing...' : 'Refresh library'}</button>
+          <a href="/hidden-games" className="text-black font-bold underline">Manage hidden games</a>
           <span className="text-black text-sm font-bold">Last synced: {lastSynced ? new Date(lastSynced).toLocaleString() : 'Never'}</span>
         </div>
       )}

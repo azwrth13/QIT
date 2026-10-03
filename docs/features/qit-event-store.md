@@ -7,7 +7,7 @@
 | `rolls.ts` | `users/{id}/rolls/{rollId}` | `recordRoll`, `markAccepted`, `markRerolled`, `markPlayed`, `getRoll`, `listRolls`, `recentlyRolled` |
 | `events.ts` | `users/{id}/events/{eventId}` (append-only) | `recordEvent`, `stageEvent` (inside a caller's transaction) |
 | `stats.ts` | `users/{id}/stats/summary` | `readStats`; counters move only through events |
-| `exclusions.ts` | `users/{id}/prefs/exclusions` | `addExclusion`, `removeExclusion`, `readExclusions` |
+| `exclusions.ts` | `users/{id}/prefs/exclusions` | `addExclusion`, `removeExclusion`, `readExclusions`, `listExclusions`, `endExclusionSession` |
 | `time.ts` | none (pure) | `endOfLocalDay`, `localDate`, `isValidTimeZone` |
 
 ## Rolls
@@ -31,7 +31,7 @@ One map doc keyed by appid, so a spin reads every exclusion in one read. Scopes 
 
 | Scope | Ends |
 |---|---|
-| `session` | when the session ends; needs a `sessionId`, and it only applies to reads with that id. It is capped at 12 hours so abandoned sessions are pruned |
+| `session` | when the owning picker or lobby session ends (`endExclusionSession`); needs a `sessionId`, and it only applies to reads with that id. No clock deadline; entries written with the former 12-hour deadline still expire then |
 | `day` ("Not tonight") | at the user's next local midnight in the `tz` passed (IANA; UTC when missing or invalid). DST-safe (D3) |
 | `7d` | 7 days later |
 | `forever` | only when `removeExclusion` un-hides it |

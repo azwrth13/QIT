@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { countersFor } from '../src/lib/history/stats';
 import { MAX_EVENT_META_BYTES, validateEvent } from '../src/lib/history/events';
 import { endOfLocalDay, isValidTimeZone, localDate } from '../src/lib/history/time';
-import { SESSION_EXCLUSION_MS, exclusionUntil, liveEntries } from '../src/lib/history/exclusions';
+import { exclusionUntil, liveEntries } from '../src/lib/history/exclusions';
 import { buildRollRecord, decodeRollCursor, encodeRollCursor, type RollInput, type RollView } from '../src/lib/history/rolls';
 
 const { getSteamId, listRolls, markAccepted, markRerolled, markPlayed } = vi.hoisted(() => ({
@@ -79,7 +79,7 @@ describe('local day', () => {
 describe('exclusion scopes', () => {
   const now = iso('2026-09-28T10:00:00Z');
   it('computes when each scope ends', () => {
-    expect(exclusionUntil('session', now)).toBe(now + SESSION_EXCLUSION_MS);
+    expect(exclusionUntil('session', now)).toBeNull();
     expect(exclusionUntil('day', now, 'Europe/Madrid')).toBe(iso('2026-09-28T22:00:00Z'));
     expect(exclusionUntil('7d', now)).toBe(now + 7 * 86_400_000);
     expect(exclusionUntil('forever', now)).toBeNull();
