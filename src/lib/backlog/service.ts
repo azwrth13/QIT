@@ -1,7 +1,7 @@
 import { appArtUrl, getAppMeta } from '../apps/metadata';
 import { db } from '../firestore';
 import { recordRoll, type RollInput } from '../history/rolls';
-import { liveEntries } from '../history/exclusions';
+import { readExclusions } from '../history/exclusions';
 import { BACKLOG_CATEGORIES, type BacklogCategory, type BacklogContext } from '../library/backlog';
 import { getLibraryGames } from '../library';
 import { buildCard } from '../roulette/card';
@@ -71,15 +71,9 @@ export async function defaultGetCandidates(steamId: string): Promise<{
   return { candidates, playtimeHidden, built: index.built };
 }
 
-export async function defaultGetExclusions(steamId: string, now: number): Promise<Set<number>> {
-  const doc = await db.doc(paths.exclusions(steamId)).get();
-  const live = liveEntries(doc.data() as Record<string, unknown> | undefined, now);
-  const set = new Set<number>();
-  for (const appidStr of live.keys()) {
-    const id = Number(appidStr);
-    if (isAppId(id)) set.add(id);
-  }
-  return set;
+export async function defaultGetExclusions(steamId: string, now: number, sessionId?: string): Promise<Set<number>> {
+  const active = await readExclusions(steamId, { sessionId, now });
+  return new Set(active.keys());
 }
 
 async function defaultHeaderArt(appid: number): Promise<string | null> {
@@ -90,7 +84,7 @@ async function defaultHeaderArt(appid: number): Promise<string | null> {
 
 export interface BacklogDeps {
   getCandidates(steamId: string): Promise<{ candidates: Candidate[]; playtimeHidden: boolean; built: boolean }>;
-  getExclusions(steamId: string, now: number): Promise<Set<number>>;
+  getExclusions(steamId: string, now: number, sessionId?: string): Promise<Set<number>>;
   recordRoll(steamId: string, input: RollInput, now: number): Promise<string>;
   headerArt(appid: number): Promise<string | null>;
   thresholds: Thresholds;
@@ -123,13 +117,35 @@ function formatGameItem(candidate: Candidate): BacklogGameItem {
   };
 }
 
+export interface BacklogOverviewOptions {
+  sessionId?: string;
+}
+
 export async function getBacklogOverview(
   steamId: string,
-  deps: BacklogDeps = DEFAULT_BACKLOG_DEPS,
+  optionsOrDeps?: BacklogOverviewOptions | BacklogDeps,
+  depsOrNothing?: BacklogDeps,
 ): Promise<BacklogOverview> {
+  let options: BacklogOverviewOptions = {};
+  let deps = DEFAULT_BACKLOG_DEPS;
+
+  if (optionsOrDeps) {
+    if ('getCandidates' in optionsOrDeps) {
+      deps = optionsOrDeps as BacklogDeps;
+    } else {
+      options = optionsOrDeps as BacklogOverviewOptions;
+      if (depsOrNothing) {
+        deps = depsOrNothing;
+      }
+    }
+  }
+
   const nowMs = deps.now();
   const nowSeconds = Math.floor(nowMs / 1000);
-  const { candidates, playtimeHidden, built } = await deps.getCandidates(steamId);
+  const [{ candidates, playtimeHidden, built }, storedExclusions] = await Promise.all([
+    deps.getCandidates(steamId),
+    deps.getExclusions(steamId, nowMs, options.sessionId),
+  ]);
 
   const ctx: BacklogContext = {
     now: nowSeconds,
@@ -137,10 +153,12 @@ export async function getBacklogOverview(
     playtimeHidden,
   };
 
+  const eligibleCandidates = candidates.filter(c => !storedExclusions.has(c.appid));
+
   let scannedGames = 0;
   let unscannedGames = 0;
   for (const candidate of candidates) {
-    if (candidate.signals.achievements !== undefined && candidate.signals.achievements !== null) {
+    if (candidate.signals.achievements !== undefined) {
       scannedGames++;
     } else {
       unscannedGames++;
@@ -155,12 +173,12 @@ export async function getBacklogOverview(
     const matchedGames: BacklogGameItem[] = [];
     let unscannedForCategory = 0;
 
-    for (const candidate of candidates) {
+    for (const candidate of eligibleCandidates) {
       if (isNonGameType(candidate.signals.store?.type ?? null)) continue;
       const verdict = categoryFn(candidate, ctx);
       if (verdict === 'match') {
         matchedGames.push(formatGameItem(candidate));
-      } else if (verdict === 'unscanned') {
+      } else if (candidate.signals.achievements === undefined) {
         unscannedForCategory++;
       }
     }
@@ -278,7 +296,7 @@ export async function spinBacklog(
   });
 
   const excludedFromRequest = new Set(request.exclude ?? []);
-  const storedExclusions = await deps.getExclusions(steamId, nowMs);
+  const storedExclusions = await deps.getExclusions(steamId, nowMs, request.sessionId);
 
   const eligiblePool = matched.filter(
     candidate => !excludedFromRequest.has(candidate.appid) && !storedExclusions.has(candidate.appid),

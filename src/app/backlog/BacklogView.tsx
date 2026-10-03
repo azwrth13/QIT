@@ -17,8 +17,9 @@ import {
 const buttonStyle =
   'border-4 border-black bg-neobrutal-yellow px-4 py-2 font-bold shadow-neobrutal transition-transform hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none disabled:opacity-50 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-neobrutal';
 
-export async function fetchBacklogOverview(signal?: AbortSignal): Promise<BacklogOverview> {
-  const res = await fetch('/api/backlog', { cache: 'no-store', signal });
+export async function fetchBacklogOverview(sessionId?: string, signal?: AbortSignal): Promise<BacklogOverview> {
+  const url = sessionId ? `/api/backlog?sessionId=${encodeURIComponent(sessionId)}` : '/api/backlog';
+  const res = await fetch(url, { cache: 'no-store', signal });
   const data = await res.json().catch(() => null);
   if (!res.ok || !data) {
     throw new Error(data?.error?.message ?? 'Unable to load backlog data');
@@ -48,6 +49,12 @@ export default function BacklogView({
   const [searchQuery, setSearchQuery] = useState('');
   const [previousAppids, setPreviousAppids] = useState<number[]>([]);
   const [busyAction, setBusyAction] = useState<'play' | 'reroll' | 'not-tonight' | 'steam' | 'exclude' | null>(null);
+  const [sessionId] = useState(() => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return 'backlog_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    }
+    return 'backlog_' + Math.random().toString(36).slice(2, 10);
+  });
 
   // Scan state for achievement degradation
   const [scanning, setScanning] = useState(false);
@@ -57,14 +64,14 @@ export default function BacklogView({
   const loadOverview = useCallback(async () => {
     setError(null);
     try {
-      const data = await fetchBacklogOverview();
+      const data = await fetchBacklogOverview(sessionId);
       setOverview(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load backlog data');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!initialOverview) {
@@ -80,7 +87,7 @@ export default function BacklogView({
       const res = await fetch('/api/backlog/spin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: selectedCategory, exclude: excludeIds }),
+        body: JSON.stringify({ category: selectedCategory, exclude: excludeIds, sessionId }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -426,6 +433,7 @@ export default function BacklogView({
             </div>
             <ExcludableResultCard
               card={card}
+              sessionId={sessionId}
               onPlay={handlePlay}
               onReroll={handleReroll}
               onExcluded={handleExcluded}
@@ -468,13 +476,6 @@ export default function BacklogView({
                 <BacklogGameRow
                   key={game.appid}
                   game={game}
-                  onSpinThis={() => {
-                    void handleSpin([
-                      ...overview.categories[selectedCategory].games
-                        .filter(g => g.appid !== game.appid)
-                        .map(g => g.appid),
-                    ]);
-                  }}
                 />
               ))}
             </ul>
@@ -487,10 +488,8 @@ export default function BacklogView({
 
 function BacklogGameRow({
   game,
-  onSpinThis,
 }: {
   game: BacklogGameItem;
-  onSpinThis: () => void;
 }) {
   const iconUrl = game.iconHash
     ? `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.iconHash}.jpg`
@@ -534,13 +533,6 @@ function BacklogGameRow({
       </div>
 
       <div className="flex items-center gap-2 self-end sm:self-center flex-none">
-        <button
-          onClick={onSpinThis}
-          title="Pick this game"
-          className="border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-neobrutal-yellow"
-        >
-          Select
-        </button>
         <a
           href={`steam://run/${game.appid}`}
           title="Launch in Steam"

@@ -156,6 +156,49 @@ describe('backlog service overview', () => {
       expect(cat.games).toEqual([]);
     }
   });
+
+  it('filters out stored exclusions from category lists and counts', async () => {
+    const deps = mockDeps({
+      getExclusions: vi.fn().mockResolvedValue(new Set([1, 4])),
+    });
+    const overview = await getBacklogOverview('user1', deps);
+
+    // Appid 1 was in never-played; now never-played count is 0
+    expect(overview.categories['never-played'].count).toBe(0);
+    expect(overview.categories['never-played'].games).toEqual([]);
+
+    // Appid 4 was in started-but-abandoned; now count is 0
+    expect(overview.categories['started-but-abandoned'].count).toBe(0);
+    expect(overview.categories['started-but-abandoned'].games).toEqual([]);
+
+    // Appid 4 was also in not-played-in-a-long-time along with appid 3; now only appid 3 remains
+    expect(overview.categories['not-played-in-a-long-time'].count).toBe(1);
+    expect(overview.categories['not-played-in-a-long-time'].games.map(g => g.appid)).toEqual([3]);
+  });
+
+  it('treats games with null achievements as scanned rather than unscanned', async () => {
+    const deps = mockDeps({
+      getCandidates: vi.fn().mockResolvedValue({
+        candidates: [
+          createCandidate(1, 'Game With No Achievements', 100, 10, null),
+        ],
+        playtimeHidden: false,
+        built: true,
+      }),
+    });
+    const overview = await getBacklogOverview('user1', deps);
+    expect(overview.scannedGames).toBe(1);
+    expect(overview.unscannedGames).toBe(0);
+    expect(overview.categories['low-completion'].unscannedCount).toBe(0);
+    expect(overview.categories['high-completion-but-unfinished'].unscannedCount).toBe(0);
+    expect(overview.categories['low-completion'].status).toBe('ready');
+  });
+
+  it('passes sessionId to getExclusions when provided in overview options', async () => {
+    const deps = mockDeps();
+    await getBacklogOverview('user1', { sessionId: 'sess_abc' }, deps);
+    expect(deps.getExclusions).toHaveBeenCalledWith('user1', NOW_MS, 'sess_abc');
+  });
 });
 
 describe('backlog service spin', () => {
@@ -223,6 +266,12 @@ describe('backlog service spin', () => {
     const result = await spinBacklog('user1', { category: 'never-played' }, deps);
     expect(result.card).toBeNull();
     expect(result.poolSize).toBe(0);
+  });
+
+  it('passes sessionId to getExclusions in spinBacklog', async () => {
+    const deps = mockDeps();
+    await spinBacklog('user1', { category: 'never-played', sessionId: 'sess_xyz' }, deps);
+    expect(deps.getExclusions).toHaveBeenCalledWith('user1', NOW_MS, 'sess_xyz');
   });
 
   it('returns card: null when no games match the category', async () => {

@@ -226,6 +226,7 @@ describe('BacklogView component rendering states', () => {
     expect(html).toContain('Team Fortress Classic');
     expect(html).toContain('Launch');
     expect(html).toContain('steam://run/10');
+    expect(html).not.toContain('Select');
   });
 
   it('renders achievement scan required callout when category status is scan_required', () => {

@@ -37,20 +37,21 @@ Categories may overlap (for example, a game can be both barely played and idle f
 
 Users can spin within any active backlog category via `POST /api/backlog/spin`:
 - The backend evaluates the candidate pool for the selected category using `BACKLOG_CATEGORIES`.
-- Active user exclusions (session, day, 7-day, permanent) from `users/{id}/prefs/exclusions` and request `exclude` IDs (prior picks from the same session) are filtered out before drawing.
-- The sampler draws an eligible candidate using weighted selection and seedable PRNG (`createRng`), supporting deterministic replays.
+- Active user exclusions (session, day, 7-day, permanent) from `users/{id}/prefs/exclusions` and request `exclude` IDs (prior picks from the same session) are filtered out before drawing. Stored exclusions are also applied to `GET /api/backlog`, ensuring hidden games leave both the category lists and counts immediately.
+- The sampler draws an eligible candidate using weighted selection and seedable PRNG (`createRng`), supporting deterministic replays. Spinning within a category is the selection mechanism.
+- Games without achievements (`null` in library index) are counted as scanned, avoiding perpetual scan prompts for games lacking achievements.
 - Category-appropriate structured reasons are assigned (e.g., `never_launched`, `barely_played`, `idle`, `ach_remaining`, `ach_near_complete`).
 - The spin is recorded as a roll in `users/{id}/rolls/{rollId}` with the appropriate `modeId` (`dust-collector`, `achievement-hunter`, or `finish-something`), capturing playtime at roll time for played-detection.
 - Header art is loaded via `getAppMeta` / `appArtUrl`.
 - The pick is rendered in the UI with `ExcludableResultCard`:
   - **Play:** records acceptance via `PATCH /api/history` and launches the game via `steam://run/<appid>`.
   - **Reroll:** records reroll transition in history and triggers a category re-spin excluding previous session results.
-  - **Not tonight / Exclude:** integrates with the vetoes API (`POST /api/user/exclusions`), hiding the game for the day, session, 7 days, or permanently.
+  - **Not tonight / Exclude:** integrates with the vetoes API (`POST /api/user/exclusions`), hiding the game for the day, session, 7 days, or permanently with session affinity (`sessionId`).
 
 ## API routes
 
-- `GET /api/backlog`: Authenticated read endpoint with rate limits (`30/s user, 120/s ip`), returning `BacklogOverview` with categories, game summaries, counts, and scan/privacy states. Responds with `Cache-Control: private, no-store`.
-- `POST /api/backlog/spin`: Authenticated mutation endpoint with same-origin validation (`checkSameOrigin`), rate limits (`20/s user, 60/s ip`), and body schema validation. Responds with `BacklogSpinResponse` containing the `Card` DTO.
+- `GET /api/backlog`: Authenticated read endpoint with rate limits (`30/s user, 120/s ip`), returning `BacklogOverview` with categories, game summaries, counts, and scan/privacy states. Accepts optional `sessionId` query parameter to filter session-scoped exclusions. Responds with `Cache-Control: private, no-store`.
+- `POST /api/backlog/spin`: Authenticated mutation endpoint with same-origin validation (`checkSameOrigin`), rate limits (`20/s user, 60/s ip`), and body schema validation (including optional `sessionId`). Responds with `BacklogSpinResponse` containing the `Card` DTO.
 
 ## Tests
 

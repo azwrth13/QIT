@@ -53,8 +53,26 @@ describe('backlog overview route GET /api/backlog', () => {
     const res = await GET(getReq());
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('private, no-store');
-    expect(overview).toHaveBeenCalledWith(await auth());
+    expect(overview).toHaveBeenCalledWith(await auth(), { sessionId: undefined });
     expect(await res.json()).toEqual({ totalGames: 5, scannedGames: 5, categories: {} });
+  });
+
+  it('passes sessionId to overview service when query param is present', async () => {
+    const req = new Request('https://qit.test/api/backlog?sessionId=session_123', {
+      headers: { 'x-forwarded-for': `192.0.2.${++serial}` },
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    expect(overview).toHaveBeenCalledWith(await auth(), { sessionId: 'session_123' });
+  });
+
+  it('rejects invalid sessionId query param with 400', async () => {
+    const req = new Request('https://qit.test/api/backlog?sessionId=invalid%20session%20id%20!!', {
+      headers: { 'x-forwarded-for': `192.0.2.${++serial}` },
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { code: 'invalid' } });
   });
 
   it('returns a safe 502 error when service throws', async () => {

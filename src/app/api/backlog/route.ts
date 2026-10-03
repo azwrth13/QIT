@@ -11,14 +11,26 @@ const limits = {
   ip: createLimiter({ capacity: 120, refillPerSecond: 4 }),
 };
 
+const SESSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
 export async function GET(req: Request) {
   const steamId = await getSteamId();
   if (!steamId) return errorResponse('unauthenticated', 'Authentication required');
   const denied = checkRateLimit(req, steamId, limits);
   if (denied) return denied;
 
+  const url = new URL(req.url);
+  const rawSessionId = url.searchParams.get('sessionId');
+  let sessionId: string | undefined;
+  if (rawSessionId !== null && rawSessionId !== '') {
+    if (!SESSION_ID.test(rawSessionId)) {
+      return errorResponse('invalid', 'Invalid sessionId');
+    }
+    sessionId = rawSessionId;
+  }
+
   try {
-    const overview = await getBacklogOverview(steamId);
+    const overview = await getBacklogOverview(steamId, { sessionId });
     return jsonResponse(overview);
   } catch (error) {
     logServerError('Backlog overview failed', error);
