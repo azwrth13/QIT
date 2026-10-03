@@ -7,6 +7,8 @@ import { drawDaily } from '../src/lib/daily/selection';
 import { addExclusion } from '../src/lib/history/exclusions';
 import { readStats } from '../src/lib/history/stats';
 import { recordRoll } from '../src/lib/history/rolls';
+import { getMode } from '../src/lib/roulette/modes';
+import { orderReasons } from '../src/lib/roulette/reasons';
 import { DEFAULT_DEPS } from '../src/lib/roulette/service';
 import type { PipelineDeps } from '../src/lib/roulette/pipeline';
 import { patchLibIndex } from '../src/lib/store/lib-index';
@@ -126,6 +128,10 @@ describe.skipIf(!emulated)('transactional Daily QIT against Firestore', { timeou
     const again = await drawDaily(id, '2026-10-03', 0, { mode: 'backlog-mix', antiRepeatDays: 0 }, [], now, deps);
     expect(first).toEqual(again); expect(first.card!.reasons.length).toBeGreaterThan(0);
     expect(['dust-collector', 'rediscovery', 'finish-something', 'something-different']).toContain(first.card!.modeId);
+    for (let index = 0; index < 8; index++) {
+      const card = (await drawDaily(id, '2026-10-03', index, { mode: 'backlog-mix', antiRepeatDays: 0 }, [], now, deps)).card!;
+      expect(card.reasons).toEqual(orderReasons(card.reasons, getMode(card.modeId).emits));
+    }
     const partial = await user({ mode: 'backlog-mix', count: 0 });
     await patchLibIndex(partial, { 10000: { n: 'Partial', p: 0, f: STORE_FLAG_BITS.known } }, { create: true });
     expect((await getToday(partial, now, deps)).today!.selection.card).not.toBeNull();

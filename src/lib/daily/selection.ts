@@ -1,6 +1,7 @@
 import type { RollInput } from '../history/rolls';
 import { createRng } from '../roulette/sampler';
 import { getMode } from '../roulette/modes';
+import { orderReasons } from '../roulette/reasons';
 import { runSpin, type PipelineDeps } from '../roulette/pipeline';
 import { parseSpinRequest } from '../roulette/request';
 import { sourcedFamilies } from '../roulette/pipeline';
@@ -14,6 +15,7 @@ function backlogMix(seed: string, selected: Map<number, ModeId>): Mode {
   const modes = MIX.map(getMode);
   return {
     ...getMode('dust-collector'),
+    emits: [],
     requires: [...new Set(modes.flatMap(mode => mode.requires))],
     score(candidate, ctx) {
       const scores = modes.map(mode => ({ mode, score: mode.score(candidate, ctx) })).filter(({ score }) => score.eligible && score.weight > 0);
@@ -22,7 +24,7 @@ function backlogMix(seed: string, selected: Map<number, ModeId>): Mode {
       let draw = createRng(`${seed}:${candidate.appid}`)() * weight;
       const chosen = scores.find(entry => (draw -= entry.score.weight) < 0) ?? scores[scores.length - 1];
       selected.set(candidate.appid, chosen.mode.id);
-      return { ...chosen.score, weight: weight / modes.length };
+      return { ...chosen.score, reasons: orderReasons(chosen.score.reasons, chosen.mode.emits), weight: weight / modes.length };
     },
   };
 }
