@@ -8,7 +8,6 @@ export interface ProfileStats {
   neverPlayed: number | null;
   unknownPlaytime: number;
   gamesDiscovered: number;
-  backlogGamesStarted: number;
   dailiesAccepted: number;
   friendNightsCompleted: number;
   challengesCompleted: number;
@@ -42,8 +41,7 @@ export function deriveProfileStats(
     totalGames: library.built ? library.entries.size : null,
     neverPlayed: library.built && !library.playtimeHidden && unknownPlaytime === 0 ? neverPlayed : null,
     unknownPlaytime,
-    gamesDiscovered: count(progression.gamesDiscovered),
-    backlogGamesStarted: count(progression.backlogGamesStarted),
+    gamesDiscovered: count(progression.backlogGamesStarted),
     dailiesAccepted: count(counters.daily_accept),
     friendNightsCompleted: count(counters.friend_night_played),
     challengesCompleted: count(progression.challengesCompleted),

@@ -7,7 +7,7 @@ const library = (entries: Array<[number, LibIndexEntry]> = [], built = true, pla
 describe('profile statistics derivation', () => {
   it('shows zero activity and a known empty library for an empty synced profile', () => {
     expect(deriveProfileStats(library(), {})).toEqual({
-      totalGames: 0, neverPlayed: 0, unknownPlaytime: 0, gamesDiscovered: 0, backlogGamesStarted: 0,
+      totalGames: 0, neverPlayed: 0, unknownPlaytime: 0, gamesDiscovered: 0,
       dailiesAccepted: 0, friendNightsCompleted: 0, challengesCompleted: 0, rareAchievementsCompleted: 0,
       recommendedThenPlayed: 0, mostUsedMode: null,
     });
@@ -26,7 +26,7 @@ describe('profile statistics derivation', () => {
       counters: { played: 9, daily_accept: 4, friend_night_played: 2, challenge_complete: 8, 'roll:modeId:dust-collector': 5, 'roll:modeId:pure-random': 3 },
       progression: { gamesDiscovered: 3, backlogGamesStarted: 1, challengesCompleted: 6, rareAchievementsCompleted: 2 },
     });
-    expect(result).toMatchObject({ gamesDiscovered: 3, recommendedThenPlayed: 3, backlogGamesStarted: 1,
+    expect(result).toMatchObject({ gamesDiscovered: 1, recommendedThenPlayed: 3,
       dailiesAccepted: 4, friendNightsCompleted: 2, challengesCompleted: 6, rareAchievementsCompleted: 2,
       mostUsedMode: { id: 'dust-collector', label: 'Dust Collector', selections: 5 } });
   });

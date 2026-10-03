@@ -8,14 +8,13 @@
 | --- | --- |
 | Games owned | Number of entries in the last synced compact index; unknown before an index exists |
 | Never played | Entries with `p === 0`; unknown if playtime is hidden or any entry has unknown playtime |
-| Games discovered through QIT | Existing progression `gamesDiscovered`: distinct recommended app IDs recorded as played |
-| Backlog games started | Existing progression `backlogGamesStarted`: distinct played picks with zero playtime at recommendation |
+| Games discovered through QIT | Existing progression `backlogGamesStarted`: distinct played picks with zero playtime at recommendation |
 | Dailies accepted | `counters.daily_accept`, zero when absent |
 | Friend Nights completed | `counters.friend_night_played`, zero when absent |
 | Challenges completed | Existing progression `challengesCompleted`, includes rare challenges |
 | Rare achievements completed | Existing progression `rareAchievementsCompleted` (verified rare challenges) |
 | Most-used roulette mode | Highest positive `roll:modeId:<registered-id>` counter; ties follow registry order; no picks means no mode |
-| Recommended, then played | Existing distinct-game `gamesDiscovered` projection; explicitly the same set as discoveries, with repeat picks counted once |
+| Recommended, then played | Existing progression `gamesDiscovered`: distinct recommended app IDs recorded as played, with repeat picks counted once |
 
 Daily and Friend Night source packages have not landed in this baseline. Their counters remain zero until those packages emit their events; this page introduces no producers. The rare-challenge surface is also pending, while the existing challenge tracker/progression already supports rare completions. Missing counters and progression fields default to zero. Manual played confirmations and sync-detected playtime increases both contribute according to the existing played-detection/progression rules.
 

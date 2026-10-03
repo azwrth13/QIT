@@ -12,10 +12,10 @@ describe('profile stats service', () => {
     doc.mockReturnValue({ get });
     get.mockResolvedValue({ get: (field: string) => field === 'flags.playtimeHidden' });
     index.mockResolvedValue({ entries: new Map([[10, { n: 'Game', p: 0 }]]), built: true });
-    stats.mockResolvedValue({ counters: {}, progression: { gamesDiscovered: 2 } });
+    stats.mockResolvedValue({ counters: {}, progression: { gamesDiscovered: 2, backlogGamesStarted: 1 } });
   });
   it('combines only the owner index and existing summary with hidden-playtime protection', async () => {
-    expect(await readProfileStats(steamId)).toMatchObject({ totalGames: 1, neverPlayed: null, gamesDiscovered: 2 });
+    expect(await readProfileStats(steamId)).toMatchObject({ totalGames: 1, neverPlayed: null, gamesDiscovered: 1, recommendedThenPlayed: 2 });
     expect(stats).toHaveBeenCalledWith(steamId);
     expect(index).toHaveBeenCalledWith(steamId);
     expect(doc).toHaveBeenCalledWith(`users/${steamId}`);

@@ -34,13 +34,12 @@ export default function ProfileStatsView() {
   const cards = [
     { label: 'Games owned', value: stats.totalGames, detail: 'Games in your last synced library.' },
     { label: 'Never played', value: stats.neverPlayed, detail: 'Games with zero recorded minutes. Hidden or incomplete playtime is unknown.' },
-    { label: 'Games discovered through QIT', value: stats.gamesDiscovered, detail: 'Distinct recommended games recorded as played.' },
-    { label: 'Backlog games started', value: stats.backlogGamesStarted, detail: 'Distinct recommended games that had no playtime when picked.' },
+    { label: 'Games discovered through QIT', value: stats.gamesDiscovered, detail: 'Distinct recommended games that had no playtime when picked and were then played.' },
     { label: 'Daily recommendations accepted', value: stats.dailiesAccepted, detail: 'Recorded Daily acceptances. Counts appear as you use Daily QIT.' },
     { label: 'Friend Nights completed', value: stats.friendNightsCompleted, detail: 'Friend Night picks recorded as played.' },
     { label: 'Challenges completed', value: stats.challengesCompleted, detail: 'Completed achievement challenges, including rare challenges.' },
     { label: 'Rare achievements completed', value: stats.rareAchievementsCompleted, detail: 'Rare achievement challenges verified as completed.' },
-    { label: 'Recommended, then played', value: stats.recommendedThenPlayed, detail: 'The distinct played games counted as discoveries above; repeat picks count once.' },
+    { label: 'Recommended, then played', value: stats.recommendedThenPlayed, detail: 'Distinct recommended games recorded as played; repeat picks count once.' },
   ];
   return <>
     {stats.totalGames === null && <p className="mb-4">Sync your library to see your library totals.</p>}
