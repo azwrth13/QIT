@@ -19,7 +19,7 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'home', href: '/', label: 'Home', enabled: true, requiresAuth: false, inNavbar: true },
   { id: 'library', href: '/library', label: 'Library', enabled: true, requiresAuth: false, inNavbar: true },
-  { id: 'daily', href: '/daily', label: 'Daily', enabled: false, requiresAuth: true, inNavbar: true },
+  { id: 'daily', href: '/daily', label: 'Daily', enabled: true, requiresAuth: true, inNavbar: true },
   { id: 'backlog', href: '/backlog', label: 'Backlog', enabled: true, requiresAuth: true, inNavbar: true },
   { id: 'friends', href: '/friends', label: 'Friends', enabled: false, requiresAuth: true, inNavbar: true },
   { id: 'friend-night', href: '/friend-night', label: 'Friend Night', enabled: false, requiresAuth: true, inNavbar: true },
