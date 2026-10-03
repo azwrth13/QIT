@@ -8,6 +8,7 @@ import { candidateFromIndexEntry } from '../roulette/scopes/library';
 import { THRESHOLDS } from '../roulette/thresholds';
 import type { Candidate, FilterSelection } from '../roulette/types';
 import { getLibraryFor, type FriendLibrary } from '../social/libraries';
+import { firestoreSocialStore } from '../social/store';
 import { paths, steamIdSegment } from '../store/paths';
 import { runTransaction } from '../store/tx';
 import type { LobbyMemberRecord, LobbyRecord } from '../store/types';
@@ -250,4 +251,48 @@ export async function editLobby(rawCode: string, steamId: string, edit: LobbyEdi
   });
   if (!result) throw new LobbyError('expired', 'This lobby has ended.', 410);
   return result;
+}
+
+/** Privacy deletion must also work for ended lobbies, without requesting more Steam data. */
+export async function removeLobbyMemberForDeletion(code: string, steamId: string): Promise<void> {
+  steamIdSegment(steamId);
+  const ref = db.doc(paths.lobby(code));
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const snapshot = await ref.get();
+    if (!snapshot.exists) return;
+    const current = snapshot.data() as LobbyRecord;
+    if (!current.members[steamId]) return;
+    const ids = Object.keys(current.members).filter(id => id !== steamId);
+    const hostId = ids.includes(current.hostId) ? current.hostId : ids[0] ?? '';
+    // Existing indexes only: deletion never fetches another member's Steam library.
+    const indexes = await firestoreSocialStore.readQitLibraries(ids);
+    const libraries: FriendLibrary[] = ids.map(id => ({
+      steamId: id, state: indexes.has(id) ? 'ok' : 'error', source: 'qit',
+      games: indexes.get(id)?.games ?? new Map(), fetchedAt: indexes.get(id)?.syncedAt ?? Date.now(),
+    }));
+    const candidates = libraries.some(library => library.state !== 'ok') ? [] : commonCandidates(libraries, hostId);
+    const chunks = encodeCommon(candidates);
+    const committed = await runTransaction(async tx => {
+      const latest = await tx.get(ref);
+      if (!latest.exists) return true;
+      const lobby = latest.data() as LobbyRecord;
+      if (!lobby.members[steamId]) return true;
+      if (lobby.version !== current.version) return false;
+      delete lobby.members[steamId];
+      delete lobby.votes[steamId];
+      delete lobby.vetoes[steamId];
+      delete lobby.result;
+      lobby.hostId = hostId;
+      if (!ids.length) lobby.status = 'closed';
+      lobby.version++;
+      lobby.updatedAt = Timestamp.now();
+      lobby.commonCount = candidates.length;
+      preview(code, lobby, candidates, Date.now());
+      writeCommon(tx, code, lobby, chunks, lobby.commonChunkCount);
+      tx.set(ref, lobby);
+      return true;
+    });
+    if (committed) return;
+  }
+  throw new LobbyError('conflict', 'Lobby is busy. Please retry deletion.', 409);
 }
