@@ -20,6 +20,6 @@ Daily and Friend Night source packages have not landed in this baseline. Their c
 
 The library reflects the last sync, not a live Steam ownership query. Users whose compact index has not been built are prompted to sync; there is deliberately no per-game legacy fallback. Partial playtime does not masquerade as a complete never-played total. No public profile, leaderboard, standard Steam achievement totals, or profile-editing surface is included.
 
-Tests cover empty and unbuilt indexes, known/unknown/hidden playtime, missing and invalid counters, unique progression versus repeated played events, mode ties, API authentication, session identity isolation, rate limits, failures, private caching, page auth gating, and navigation visibility.
+Tests cover empty and unbuilt indexes, known/unknown/hidden playtime, missing and invalid counters, unique progression versus repeated played events, mode ties, API authentication, session identity isolation, rate limits, failures, friendly fallbacks for non-JSON responses, private caching, page auth gating, and navigation visibility.
 
 Package-boundary note: the current sign-in return-path allow-list supports lobby links only, so signing in from this page follows the normal library landing. Users can then select Stats in the navigation. Auth/short-link files remain untouched.
