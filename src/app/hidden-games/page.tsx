@@ -14,7 +14,6 @@ export default function HiddenGamesPage() {
   const [hides, setHides] = useState<Hide[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [selected, setSelected] = useState('');
-  const [sessionId, setSessionId] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -25,27 +24,17 @@ export default function HiddenGamesPage() {
     setHides(data.exclusions);
   }, []);
   useEffect(() => {
-    setSessionId(crypto.randomUUID());
     Promise.all([load(), fetch('/api/games').then(async response => {
       if (!response.ok) return;
       const data = await response.json();
       setGames(data.games ?? []);
     })]).catch(error => setMessage(error.message)).finally(() => setLoading(false));
   }, [load]);
-  useEffect(() => {
-    if (!sessionId) return;
-    const end = () => { void fetch('/api/user/exclusions', {
-      method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'end-session', sessionId }),
-    }).catch(() => {}); };
-    window.addEventListener('pagehide', end);
-    return () => window.removeEventListener('pagehide', end);
-  }, [sessionId]);
   async function mutate(body: Parameters<typeof updateExclusion>[0]) {
     setBusy(true);
     setMessage('');
-    try { await updateExclusion(body); await load(); return true; }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to update hidden games'); return false; }
+    try { await updateExclusion(body); await load(); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to update hidden games'); }
     finally { setBusy(false); }
   }
   const game = games.find(item => String(item.appid) === selected);
@@ -61,16 +50,12 @@ export default function HiddenGamesPage() {
           {games.map(item => <option key={item.appid} value={item.appid}>{item.name}</option>)}
         </select>
       </label>
-      {game && <ExcludableResultCard sessionId={sessionId} onExcluded={() => void load().catch(error => setMessage(error.message))} card={{
+      {game && <ExcludableResultCard onExcluded={() => void load().catch(error => setMessage(error.message))} card={{
         appid: game.appid, name: game.name, modeId: 'pure-random', rollId: null,
         art: { header: null, icon: null }, reasons: [], playtimeForever: game.playtime_forever ?? 0,
         lastPlayedAt: null, achievements: null, live: null, friends: null, previousSelections: 0,
         storeUrl: 'https://store.steampowered.com/app/' + game.appid, launchUrl: 'steam://run/' + game.appid,
       }} />}
-      <p className="my-4 text-sm">Session hides created here apply to this page session. Picker and lobby surfaces use their own session ids.</p>
-      <button className={button} disabled={busy || !sessionId} onClick={() => {
-        void mutate({ action: 'end-session', sessionId }).then(ok => { if (ok) setSessionId(crypto.randomUUID()); });
-      }}>End this session</button>
       {Object.entries(SCOPE_LABELS).map(([scope, label]) => <section key={scope} className="my-6 border-4 border-black bg-white p-4">
         <h2 className="mb-3 text-xl font-bold">{label}</h2>
         {hides.filter(hide => hide.scope === scope).length === 0 && <p>No games hidden.</p>}

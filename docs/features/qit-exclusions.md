@@ -59,10 +59,10 @@ API, and opens a scope chooser for Add to exclusions. Owning surfaces provide
 disabled when no session id is provided. `updateExclusion` is the shared client
 for hide/un-hide/end-session calls.
 
-The management page has its own session id, an explicit End this session
-button, and a best-effort pagehide request to end it. Its hides do not apply to
-a different picker session. Future picker and lobby surfaces must supply their
-own ids and call end-session at their lifecycle boundary.
+The management page has no session of its own, so its card disables Hide for
+this session; it still lists and un-hides session entries. Session hides are
+keyed only to picker and lobby session ids. Future picker and lobby surfaces
+must supply their own ids and call end-session at their lifecycle boundary.
 
 The merged roulette history loader already reads active exclusions with the
 request session id before the filter engine's exclusion stage. No additional
