@@ -28,7 +28,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'hunt', href: '/hunt', label: 'Achievement Hunt', enabled: false, requiresAuth: true, inNavbar: true },
   { id: 'rare-challenge', href: '/rare-challenge', label: 'Rare Challenge', enabled: false, requiresAuth: true, inNavbar: true },
   { id: 'history', href: '/history', label: 'History', enabled: false, requiresAuth: true, inNavbar: true },
-  { id: 'profile', href: '/profile', label: 'Stats', enabled: false, requiresAuth: true, inNavbar: true },
+  { id: 'profile', href: '/profile', label: 'Stats', enabled: true, requiresAuth: true, inNavbar: true },
   { id: 'privacy', href: '/privacy', label: 'Privacy', enabled: false, requiresAuth: false, inNavbar: false },
 ];
 

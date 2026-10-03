@@ -67,10 +67,10 @@ describe('thresholds', () => {
 });
 
 describe('nav items', () => {
-  it('keep today\'s navbar until a surface flips its own flag', () => {
+  it('show enabled surfaces according to authentication', () => {
     expect(navbarItems(false).map(item => item.href)).toEqual(['/', '/library']);
-    expect(navbarItems(true).map(item => item.href)).toEqual(['/', '/library']);
-    expect(NAV_ITEMS.filter(item => item.enabled).map(item => item.id)).toEqual(['home', 'library']);
+    expect(navbarItems(true).map(item => item.href)).toEqual(['/', '/library', '/profile']);
+    expect(NAV_ITEMS.filter(item => item.enabled).map(item => item.id)).toEqual(['home', 'library', 'profile']);
     expect(isNavEnabled('library')).toBe(true);
     expect(isNavEnabled('friend-night')).toBe(false);
   });
