@@ -4,6 +4,15 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { ProfileStats } from '@/lib/profile/stats';
 
+const LOAD_ERROR = 'Unable to load your QIT stats';
+
+export async function fetchProfileStats(signal?: AbortSignal): Promise<ProfileStats> {
+  const response = await fetch('/api/profile/stats', { cache: 'no-store', signal });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body) throw new Error(body?.error?.message ?? LOAD_ERROR);
+  return body;
+}
+
 export default function ProfileStatsView() {
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [error, setError] = useState('');
@@ -14,12 +23,10 @@ export default function ProfileStatsView() {
     setStats(null);
     async function load() {
       try {
-        const response = await fetch('/api/profile/stats', { cache: 'no-store', signal: controller.signal });
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error?.message ?? 'Unable to load your QIT stats');
+        const body = await fetchProfileStats(controller.signal);
         if (!controller.signal.aborted) setStats(body);
       } catch (cause) {
-        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to load your QIT stats');
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : LOAD_ERROR);
       }
     }
     void load();
