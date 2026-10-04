@@ -18,7 +18,7 @@ Delivers the **QIT History page with re-roll** package (Feature 13 "Game History
   - Recorded playtime at recommendation
 - **User capabilities**:
   - **View previous recommendations**: paginated history list (newest first) with empty, loading, error, and partial data states.
-  - **Recommendations that became played games view**: dedicated tab filtering recommendations that have been played.
+  - **Recommendations that became played games view**: dedicated tab filtering recommendations that have been played. Tab counts are labelled "loaded" because they cover only the pages fetched so far.
   - **Mark as played action**: manual confirmation button ("Mark as played") for unplayed recommendations, calling `PATCH /api/history { rollId, action: 'played' }`.
   - **Re-roll from old sessions**: re-rolls using the stored mode, filters, and scope of an earlier recommendation, keeping any stored `exclude-rolled` filter and adding the active anti-repeat setting only when the stored session had none and the setting is on.
   - **Avoid recent recommendations setting (Decision D6)**: user-configurable anti-repeat window with options Off (0), 7 days, 30 days (default), and 90 days, saved per user in Firestore.
