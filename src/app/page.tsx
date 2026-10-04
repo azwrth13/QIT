@@ -5,6 +5,8 @@ import { SearchIcon, Loader2, ExternalLink, User } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import BrowserWindow from './components/BrowserWindow';
+import { DailyWidget } from '@/components/daily/DailyWidget';
+import { isNavEnabled } from './navbar/nav-items';
 import { useFetchUserProfile } from './navbar/hooks/useFetchUserProfile';
 import { isSteamIdOrProfileUrl } from '../lib/steam';
 
@@ -176,6 +178,8 @@ export default function Home() {
             <Link href="/library" className="inline-flex items-center gap-2 bg-neobrutal-green hover:bg-neobrutal-purple border-4 border-black shadow-neobrutal text-black font-bold py-2 px-4">My Library</Link>
           </div>
         )}
+
+        {!authLoading && signedInProfile && isNavEnabled('daily') && <DailyWidget />}
 
         <BrowserWindow title="STEAM PROFILE SEARCH">
           {/* Search Form */}
