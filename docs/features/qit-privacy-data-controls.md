@@ -60,5 +60,3 @@ These are documented release limitations, not additional changes to this package
 ## Verification
 
 Emulator tests invoke the real endpoints with only authentication mocked. They cover caller-only exports, unknown/orphan descendants, more than 450 deletes, all known subcollections, another user's preservation, expired-lobby membership and playtime cleanup, host transfer/empty closure, session-cookie removal, repeated deletion, confirmation, authentication and Origin failures. Unit suite, typecheck and lint also run locally before handoff.
-
-Local results: 618 unit tests passed; all 102 emulator tests passed; the four privacy emulator tests passed again after the final assertions/import cleanup. `npm run typecheck`, `npm run lint`, `npm run build` and `git diff --check` passed. The build includes `/privacy` and both data endpoints. Existing browser-compatibility database age notices did not fail these checks.
