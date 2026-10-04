@@ -10,7 +10,7 @@ vi.mock('../src/lib/auth', () => ({ getSteamId }));
 vi.mock('../src/lib/compare/service', () => ({ compareLibrariesService }));
 vi.mock('../src/lib/base-url', () => ({ getBaseUrl: () => 'https://qit.example' }));
 
-import { GET as getCompareDynamic, POST as postCompareDynamic } from '../src/app/api/compare/[steamid]/route';
+import { GET as getCompareDynamic } from '../src/app/api/compare/[steamid]/route';
 
 const me = '76561198000000001';
 const friend = '76561198000000002';
@@ -106,26 +106,9 @@ describe('GET /api/compare/[steamid]', () => {
   });
 });
 
-describe('POST /api/compare/[steamid]', () => {
-  it('requires authentication on POST', async () => {
-    getSteamId.mockResolvedValue(null);
-    const response = await postCompareDynamic(req('POST'), dynamicContext);
-    expect(response.status).toBe(401);
-  });
-
-  it('rejects cross-origin POST requests with 403', async () => {
-    const response = await postCompareDynamic(req('POST', `/api/compare/${friend}`, 'https://evil.example'), dynamicContext);
-    expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ error: { code: 'forbidden', message: 'Cross-origin request rejected' } });
-    expect(compareLibrariesService).not.toHaveBeenCalled();
-  });
-
-  it('accepts same-origin POST', async () => {
-    const response = await postCompareDynamic(
-      req('POST', `/api/compare/${friend}`, 'https://qit.example'),
-      dynamicContext
-    );
-    expect(response.status).toBe(200);
-    expect(compareLibrariesService).toHaveBeenCalledWith(me, friend);
+describe('compare route methods', () => {
+  it('is read-only: no POST handler is exported', async () => {
+    const route = await import('../src/app/api/compare/[steamid]/route');
+    expect(Object.keys(route)).not.toContain('POST');
   });
 });

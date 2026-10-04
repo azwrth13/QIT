@@ -16,11 +16,10 @@ The page and API present the full comparison breakdown:
 
 ## API Endpoints
 
-- `GET /api/compare/[steamid]` and `POST /api/compare/[steamid]`: Dynamic route returning `CompareResult`.
+- `GET /api/compare/[steamid]`: Read-only dynamic route returning `CompareResult`. It exports no other methods.
 
 ### Route Guards and Safety
 - **Authentication**: `getSteamId()` ensures only authenticated Steam users can compare libraries (401 unauthenticated).
-- **Origin verification**: `checkSameOrigin(req)` rejects cross-origin POST mutations (403 forbidden).
 - **Rate limiting**: Token bucket limits (burst capacity 20, 1/3 refill/s per user; capacity 60, 1 refill/s per IP) return 429 with `Retry-After`.
 - **Privacy & profile validation**:
   - Rejects comparing with oneself (400 invalid).
@@ -42,6 +41,6 @@ The page and API present the full comparison breakdown:
 ## Validation
 
 - `tests/qit-library-compare.service.test.ts`: Unit tests for comparison calculations, recency windows, never-played subsets, empty libraries, hidden playtime flags, and error taxonomies.
-- `tests/qit-library-compare.routes.test.ts`: Route tests covering authentication, parameter validation, rate limits, Origin checks, 401/403/404/502 error envelopes, and `Cache-Control` headers.
+- `tests/qit-library-compare.routes.test.ts`: Route tests covering authentication, parameter validation, rate limits, 401/403/404/502 error envelopes, and `Cache-Control` headers.
 - `tests/qit-library-compare.view.test.tsx`: Component tests for `CompareClient`, `ComparePickerClient`, and server page wrappers for authenticated, unauthenticated, loading, error, and loaded states.
 - `tests/qit-foundation.test.ts`: Verification of `compare` enabled in `nav-items.ts`.
