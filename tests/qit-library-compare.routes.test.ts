@@ -1,0 +1,114 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CompareError } from '../src/lib/compare/types';
+
+const { getSteamId, compareLibrariesService } = vi.hoisted(() => ({
+  getSteamId: vi.fn(),
+  compareLibrariesService: vi.fn(),
+}));
+
+vi.mock('../src/lib/auth', () => ({ getSteamId }));
+vi.mock('../src/lib/compare/service', () => ({ compareLibrariesService }));
+vi.mock('../src/lib/base-url', () => ({ getBaseUrl: () => 'https://qit.example' }));
+
+import { GET as getCompareDynamic } from '../src/app/api/compare/[steamid]/route';
+
+const me = '76561198000000001';
+const friend = '76561198000000002';
+
+const dynamicContext = { params: Promise.resolve({ steamid: friend }) };
+const invalidContext = { params: Promise.resolve({ steamid: 'invalid-id' }) };
+
+const mockResult = {
+  target: { steamId: friend, personaName: 'Friend', avatarUrl: null, profileUrl: `https://steamcommunity.com/profiles/${friend}` },
+  user: { steamId: me, personaName: 'Me' },
+  sharedCount: 5,
+  both: [],
+  onlyMe: [],
+  onlyThem: [],
+  neitherRecentlyPlayed: [],
+  oneNeverPlayed: [],
+  playtimeHidden: { me: false, them: false },
+};
+
+function req(method = 'GET', path = `/api/compare/${friend}`, origin = 'https://qit.example', body?: unknown) {
+  return new Request(`https://qit.example${path}`, {
+    method,
+    headers: {
+      origin,
+      'x-forwarded-for': '198.51.100.1, 203.0.113.1',
+      ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+}
+
+beforeEach(() => {
+  getSteamId.mockReset();
+  compareLibrariesService.mockReset();
+  getSteamId.mockResolvedValue(me);
+  compareLibrariesService.mockResolvedValue(mockResult);
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+describe('GET /api/compare/[steamid]', () => {
+  it('requires authentication before processing', async () => {
+    getSteamId.mockResolvedValue(null);
+    const response = await getCompareDynamic(req('GET'), dynamicContext);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: { code: 'unauthenticated', message: 'Authentication required' } });
+    expect(compareLibrariesService).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid Steam ID with 400', async () => {
+    const response = await getCompareDynamic(req('GET', '/api/compare/invalid-id'), invalidContext);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: { code: 'invalid', message: 'Enter a valid 17-digit Steam ID.' } });
+    expect(compareLibrariesService).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when friend profile is private', async () => {
+    compareLibrariesService.mockRejectedValue(
+      new CompareError('forbidden', 'This friend’s game details are private. Ask them to set Game details to Public in Steam.', 403)
+    );
+    const response = await getCompareDynamic(req('GET'), dynamicContext);
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe('forbidden');
+    expect(body.error.state).toBe('private');
+  });
+
+  it('returns 404 when friend profile is not found', async () => {
+    compareLibrariesService.mockRejectedValue(
+      new CompareError('not_found', 'Steam profile not found.', 404)
+    );
+    const response = await getCompareDynamic(req('GET'), dynamicContext);
+    expect(response.status).toBe(404);
+    const body = await response.json();
+    expect(body.error.code).toBe('not_found');
+    expect(body.error.state).toBe('not_found');
+  });
+
+  it('returns 502 when upstream Steam service fails', async () => {
+    compareLibrariesService.mockRejectedValue(new Error('Steam failure'));
+    const response = await getCompareDynamic(req('GET'), dynamicContext);
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.error.code).toBe('unavailable');
+  });
+
+  it('returns 200 with comparison payload and Cache-Control headers', async () => {
+    const response = await getCompareDynamic(req('GET'), dynamicContext);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    const body = await response.json();
+    expect(body).toEqual(mockResult);
+    expect(compareLibrariesService).toHaveBeenCalledWith(me, friend);
+  });
+});
+
+describe('compare route methods', () => {
+  it('is read-only: no POST handler is exported', async () => {
+    const route = await import('../src/app/api/compare/[steamid]/route');
+    expect(Object.keys(route)).not.toContain('POST');
+  });
+});
