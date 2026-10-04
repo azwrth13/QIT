@@ -1,5 +1,5 @@
 import { getSteamId } from '../auth';
-import { checkRateLimit, checkSameOrigin, createLimiter, errorResponse, jsonResponse } from '../http/guards';
+import { checkRateLimit, createLimiter, errorResponse, jsonResponse } from '../http/guards';
 import { logServerError } from '../steam';
 import { CompareError } from './types';
 
@@ -8,11 +8,9 @@ export const compareLimits = {
   ip: createLimiter({ capacity: 60, refillPerSecond: 1 }),
 };
 
-export async function compareGuard(req: Request, mutation = false): Promise<{ steamId: string } | { response: Response }> {
+export async function compareGuard(req: Request): Promise<{ steamId: string } | { response: Response }> {
   const steamId = await getSteamId();
   if (!steamId) return { response: errorResponse('unauthenticated', 'Authentication required') };
-  const originDenied = mutation ? checkSameOrigin(req) : null;
-  if (originDenied) return { response: originDenied };
   const rateDenied = checkRateLimit(req, steamId, compareLimits);
   if (rateDenied) return { response: rateDenied };
   return { steamId };
