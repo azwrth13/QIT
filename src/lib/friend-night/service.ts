@@ -27,7 +27,7 @@ export async function friendNight(steamId: string, request: ParsedSpinRequest, a
       const score = mode.score(candidate, ctx);
       const live = candidate.signals.live;
       return { ...score, reasons: [...groupReasons(candidate.signals.group!),
-        ...(live?.players !== null && live?.players !== undefined ? [reason('active_now', { players: live.players, band: live.band })] : []), ...score.reasons] };
+        ...(live?.players !== null && live?.players !== undefined && !score.reasons.some(r => r.code === 'active_now') ? [reason('active_now', { players: live.players, band: live.band })] : []), ...score.reasons] };
     },
   } };
   // Capture picked members through the card's appid, independently of scoring order.
