@@ -22,7 +22,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'daily', href: '/daily', label: 'Daily', enabled: false, requiresAuth: true, inNavbar: true },
   { id: 'backlog', href: '/backlog', label: 'Backlog', enabled: false, requiresAuth: true, inNavbar: true },
   { id: 'friends', href: '/friends', label: 'Friends', enabled: false, requiresAuth: true, inNavbar: true },
-  { id: 'friend-night', href: '/friend-night', label: 'Friend Night', enabled: false, requiresAuth: true, inNavbar: true },
+  { id: 'friend-night', href: '/friend-night', label: 'Friend Night', enabled: true, requiresAuth: true, inNavbar: true },
   { id: 'compare', href: '/compare', label: 'Compare', enabled: false, requiresAuth: true, inNavbar: false },
   { id: 'lobby', href: '/lobby', label: 'Lobby', enabled: false, requiresAuth: true, inNavbar: true },
   { id: 'hunt', href: '/hunt', label: 'Achievement Hunt', enabled: false, requiresAuth: true, inNavbar: true },
