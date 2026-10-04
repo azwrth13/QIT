@@ -30,7 +30,8 @@ mode. Ignore and active use Everyone Owns It for a uniform draw among eligible
 shared games. Current activity is still enriched for the card when ignored as a
 selection criterion. The shared loader calculates pool-relative bands: high at
 P75 with a floor of 100 concurrent, low at P25. A missing counter has no badge.
-Known player counts receive an activity reason alongside ownership and the
+Known player counts receive one activity reason (not duplicated when the
+selected mode already emits it) alongside ownership and the
 known never-played count. Individual playtime is displayed with names, Steam ID
 fallbacks, and an explicit unknown/hidden state.
 
