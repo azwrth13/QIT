@@ -51,6 +51,14 @@ describe('Friend Night discovery and pipeline', () => {
     expect(result.members).toEqual(group(0, 60).members);
     expect(deps.recordRoll).toHaveBeenCalledWith(self, expect.objectContaining({ appid: 20, participants: [self, friend] }), 1000000);
   });
+  it('shows current players once when the prefer-active mode already reports them', async () => {
+    const withStore = candidate(20, [0, 60]);
+    withStore.signals.store = { type: 'game', flags: { multiplayer: true } } as Candidate['signals']['store'];
+    const parsed = parseSpinRequest({ mode: 'alive-and-kicking', scope: { kind: 'friends', with: [friend] } }, 'spin', new Set(['library', 'store', 'group', 'history', 'live']));
+    if (!parsed.ok) throw new Error(parsed.error);
+    const result = await friendNight(self, parsed.request, 'spin', 'any', 10, dependencies([withStore]));
+    expect(result.card?.reasons.map(r => r.code).filter(code => code === 'active_now')).toEqual(['active_now']);
+  });
   it('returns an empty pool for unavailable or nonmatching groups without recording a roll', async () => {
     const deps = dependencies([], [{ steamId: friend, state: 'private' }]);
     const result = await friendNight(self, request(), 'spin', 'any', 10, deps);
