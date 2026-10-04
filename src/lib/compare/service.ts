@@ -145,7 +145,5 @@ export async function compareLibrariesService(
       me: userLibrary.playtimeHidden ?? false,
       them: targetPlaytimeHidden,
     },
-    onlyA: comparison.onlyA,
-    onlyB: comparison.onlyB,
   };
 }

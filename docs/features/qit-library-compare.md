@@ -6,8 +6,8 @@
 
 The page and API present the full comparison breakdown:
 - **Games both users own (`both`)**: Common games owned by both accounts.
-- **Games only User A owns (`onlyMe` / `onlyA`)**: Games in the requester's library not owned by the friend.
-- **Games only User B owns (`onlyThem` / `onlyB`)**: Games in the friend's library not owned by the requester.
+- **Games only User A owns (`onlyMe`)**: Games in the requester's library not owned by the friend.
+- **Games only User B owns (`onlyThem`)**: Games in the friend's library not owned by the requester.
 - **Number of shared games (`sharedCount`)**: Total count of games owned by both users.
 - **Shared games neither player has recently played (`neitherRecentlyPlayed`)**: Shared games where both players have zero playtime or were inactive beyond the recency threshold (defaulting to 90 days from `THRESHOLDS.notRecentlyPlayedDays`).
 - **Shared games one player has never played (`oneNeverPlayed`)**: Shared games where at least one player has recorded zero minutes of playtime.
@@ -17,7 +17,6 @@ The page and API present the full comparison breakdown:
 ## API Endpoints
 
 - `GET /api/compare/[steamid]` and `POST /api/compare/[steamid]`: Dynamic route returning `CompareResult`.
-- `GET /api/compare?steamid=...` and `POST /api/compare`: Query/body fallback routes.
 
 ### Route Guards and Safety
 - **Authentication**: `getSteamId()` ensures only authenticated Steam users can compare libraries (401 unauthenticated).

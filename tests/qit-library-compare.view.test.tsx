@@ -100,8 +100,6 @@ const sampleResult: CompareResult = {
     },
   ],
   playtimeHidden: { me: false, them: false },
-  onlyA: [],
-  onlyB: [],
 };
 
 describe('ComparePage server component', () => {

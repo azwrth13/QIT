@@ -11,7 +11,6 @@ vi.mock('../src/lib/compare/service', () => ({ compareLibrariesService }));
 vi.mock('../src/lib/base-url', () => ({ getBaseUrl: () => 'https://qit.example' }));
 
 import { GET as getCompareDynamic, POST as postCompareDynamic } from '../src/app/api/compare/[steamid]/route';
-import { GET as getCompareRoot, POST as postCompareRoot } from '../src/app/api/compare/route';
 
 const me = '76561198000000001';
 const friend = '76561198000000002';
@@ -29,8 +28,6 @@ const mockResult = {
   neitherRecentlyPlayed: [],
   oneNeverPlayed: [],
   playtimeHidden: { me: false, them: false },
-  onlyA: [],
-  onlyB: [],
 };
 
 function req(method = 'GET', path = `/api/compare/${friend}`, origin = 'https://qit.example', body?: unknown) {
@@ -136,34 +133,5 @@ describe('POST /api/compare/[steamid]', () => {
     );
     expect(response.status).toBe(200);
     expect(compareLibrariesService).toHaveBeenCalledWith(me, friend, { notRecentlyPlayedDays: 45 });
-  });
-});
-
-describe('/api/compare query and body fallback route', () => {
-  it('GET /api/compare requires steamid query param', async () => {
-    const response = await getCompareRoot(req('GET', '/api/compare'));
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: { code: 'invalid', message: 'Enter a valid 17-digit Steam ID in the steamid parameter.' },
-    });
-  });
-
-  it('GET /api/compare?steamid=... returns comparison for valid id', async () => {
-    const response = await getCompareRoot(req('GET', `/api/compare?steamid=${friend}`));
-    expect(response.status).toBe(200);
-    expect(compareLibrariesService).toHaveBeenCalledWith(me, friend, { notRecentlyPlayedDays: undefined });
-  });
-
-  it('POST /api/compare rejects cross-origin', async () => {
-    const response = await postCompareRoot(req('POST', '/api/compare', 'https://attacker.example', { steamid: friend }));
-    expect(response.status).toBe(403);
-  });
-
-  it('POST /api/compare accepts valid same-origin request with body', async () => {
-    const response = await postCompareRoot(
-      req('POST', '/api/compare', 'https://qit.example', { steamid: friend, notRecentlyPlayedDays: 30 })
-    );
-    expect(response.status).toBe(200);
-    expect(compareLibrariesService).toHaveBeenCalledWith(me, friend, { notRecentlyPlayedDays: 30 });
   });
 });

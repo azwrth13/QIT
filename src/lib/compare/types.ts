@@ -24,9 +24,6 @@ export interface CompareResult {
     me: boolean;
     them: boolean;
   };
-  /** Aliases for symmetry and backwards compatibility */
-  onlyA: GroupGame[];
-  onlyB: GroupGame[];
 }
 
 export interface CompareOptions {
