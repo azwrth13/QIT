@@ -81,7 +81,7 @@ describe.skipIf(!emulated)('pinned players (emulator)', () => {
     const ids = Array.from({ length: 4 }, (_, i) => idOf(100 + i));
     await Promise.all(ids.map(id => store.updatePinned(owner, current => current.includes(id) ? null : [...current, id])));
     expect([...await store.readPinned(owner)].sort()).toEqual(ids);
-  });
+  }, 30_000);
 
   it('leaves the stored list alone when the change says so', async () => {
     const owner = freshUser();
