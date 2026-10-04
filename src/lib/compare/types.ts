@@ -28,7 +28,6 @@ export interface CompareResult {
 
 export interface CompareOptions {
   now?: number;
-  notRecentlyPlayedDays?: number;
 }
 
 export class CompareError extends Error {

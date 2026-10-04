@@ -102,13 +102,7 @@ describe('GET /api/compare/[steamid]', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     const body = await response.json();
     expect(body).toEqual(mockResult);
-    expect(compareLibrariesService).toHaveBeenCalledWith(me, friend, { notRecentlyPlayedDays: undefined });
-  });
-
-  it('forwards custom days query parameter', async () => {
-    const response = await getCompareDynamic(req('GET', `/api/compare/${friend}?days=60`), dynamicContext);
-    expect(response.status).toBe(200);
-    expect(compareLibrariesService).toHaveBeenCalledWith(me, friend, { notRecentlyPlayedDays: 60 });
+    expect(compareLibrariesService).toHaveBeenCalledWith(me, friend);
   });
 });
 
@@ -126,12 +120,12 @@ describe('POST /api/compare/[steamid]', () => {
     expect(compareLibrariesService).not.toHaveBeenCalled();
   });
 
-  it('accepts same-origin POST and parses optional body parameters', async () => {
+  it('accepts same-origin POST', async () => {
     const response = await postCompareDynamic(
-      req('POST', `/api/compare/${friend}`, 'https://qit.example', { notRecentlyPlayedDays: 45 }),
+      req('POST', `/api/compare/${friend}`, 'https://qit.example'),
       dynamicContext
     );
     expect(response.status).toBe(200);
-    expect(compareLibrariesService).toHaveBeenCalledWith(me, friend, { notRecentlyPlayedDays: 45 });
+    expect(compareLibrariesService).toHaveBeenCalledWith(me, friend);
   });
 });
