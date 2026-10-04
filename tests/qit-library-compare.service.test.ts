@@ -131,11 +131,9 @@ describe('compareLibrariesService', () => {
 
     // Only User A owns: appid 40
     expect(result.onlyMe.map(g => g.appid)).toEqual([40]);
-    expect(result.onlyA.map(g => g.appid)).toEqual([40]);
 
     // Only User B owns: appid 50
     expect(result.onlyThem.map(g => g.appid)).toEqual([50]);
-    expect(result.onlyB.map(g => g.appid)).toEqual([50]);
 
     // One never played: appid 20 (User A has 0 minutes)
     expect(result.oneNeverPlayed.map(g => g.appid)).toEqual([20]);
