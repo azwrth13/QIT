@@ -7,7 +7,7 @@ vi.mock('../src/lib/auth', () => ({ getSteamId: auth }));
 import HistoryPage from '../src/app/history/page';
 import HistoryView, { type RollItem } from '../src/app/history/HistoryView';
 import { isNavEnabled, navbarItems, NAV_ITEMS } from '../src/app/navbar/nav-items';
-import type { Card } from '../src/lib/roulette/types';
+import type { Card, FilterSelection } from '../src/lib/roulette/types';
 import { buildRerollFilters } from '../src/lib/history/reroll-filters';
 import { ExcludableResultCard } from '../src/components/result-card/ExcludableResultCard';
 
@@ -133,11 +133,11 @@ describe('History Page & View', () => {
     });
 
     it('builds re-roll filters from stored filters and the anti-repeat setting', () => {
-      const stored = [{ id: 'never-played' }];
+      const stored: FilterSelection[] = [{ id: 'never-played' }];
       expect(buildRerollFilters(stored, 0)).toEqual(stored);
       expect(buildRerollFilters(undefined, 0)).toEqual([]);
       expect(buildRerollFilters(stored, 30)).toEqual([...stored, { id: 'exclude-rolled', params: { days: 30 } }]);
-      const withStored = [{ id: 'exclude-rolled', params: { days: 7 } }];
+      const withStored: FilterSelection[] = [{ id: 'exclude-rolled', params: { days: 7 } }];
       expect(buildRerollFilters(withStored, 0)).toEqual(withStored);
       expect(buildRerollFilters(withStored, 90)).toEqual(withStored);
     });
