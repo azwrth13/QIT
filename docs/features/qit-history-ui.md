@@ -65,7 +65,7 @@ Delivers the **QIT History page with re-roll** package (Feature 13 "Game History
 - Private `Cache-Control: private, no-store` on authenticated API responses.
 
 ## Package boundaries and notes
-- Unshipped surfaces (e.g. `/friend-night`, `/lobby`) remain hidden behind `isNavEnabled` checks.
+- Unshipped surfaces (e.g. `/lobby`, `/hunt`) remain hidden behind `isNavEnabled` checks.
 - Auth routes, short-link files, `next.config.ts`, `firebase.json`, `apphosting.yaml`, and `README.md` remain untouched.
 - Anti-repeat settings are stored under the user's `prefs` subcollection, keeping isolation from other user data.
 - The anti-repeat preference (D6) is applied only to re-rolls from `/history`. Applying it at the shared spin boundary so every roulette caller honors it is a follow-up.
