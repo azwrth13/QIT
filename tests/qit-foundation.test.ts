@@ -69,9 +69,10 @@ describe('thresholds', () => {
 describe('nav items', () => {
   it('show enabled surfaces according to authentication', () => {
     expect(navbarItems(false).map(item => item.href)).toEqual(['/', '/library']);
-    expect(navbarItems(true).map(item => item.href)).toEqual(['/', '/library', '/profile']);
-    expect(NAV_ITEMS.filter(item => item.enabled).map(item => item.id)).toEqual(['home', 'library', 'profile']);
+    expect(navbarItems(true).map(item => item.href)).toEqual(['/', '/library', '/backlog', '/profile']);
+    expect(NAV_ITEMS.filter(item => item.enabled).map(item => item.id)).toEqual(['home', 'library', 'backlog', 'profile']);
     expect(isNavEnabled('library')).toBe(true);
+    expect(isNavEnabled('backlog')).toBe(true);
     expect(isNavEnabled('friend-night')).toBe(false);
   });
 
