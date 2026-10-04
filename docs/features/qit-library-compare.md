@@ -35,6 +35,7 @@ The page and API present the full comparison breakdown:
 
 - **Requester Library**: Read from the compact 4-chunk library index (`readLibIndex`), falling back to stored per-game documents or live Steam sync if the index is not yet built.
 - **Target Library**: Fetched via `getLibraryFor(ids)`, utilizing the 30-minute Firestore cache in `publicLibraries/{steamId}` (Decision D10) so subsequent comparisons do not re-query Steam.
+- **Hidden playtime**: For both players, `playtimeHidden` is true when the stored user flag is set or when the fetched games all report zero playtime (same detection as library sync), so a non-QIT friend with hidden playtime shows "Hidden" instead of 0 minutes.
 - **Pure Comparison**: Driven by `compareLibraries` in `src/lib/group/libraries.ts`.
 - **Roulette Integration**: Spins invoke `POST /api/roulette/spin` with `{ mode: 'everyone-owns-it', scope: { kind: 'pair', with: targetSteamId } }`.
 - **Navigation Guard**: Links to pending surfaces (`/friends`, `/friend-night`) use `isNavEnabled` and remain hidden until those packages ship.
