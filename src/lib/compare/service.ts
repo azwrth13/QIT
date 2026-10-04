@@ -1,6 +1,7 @@
 import { db } from '../firestore';
 import { compareLibraries, type GroupLibrary } from '../group/libraries';
 import { getLibraryGames } from '../library';
+import { detectPlaytimeHidden, fromIndexEntry } from '../library/model';
 import { getLibraryFor, type FriendLibrary } from '../social/libraries';
 import { isSteamId } from '../steam';
 import { getPlayerSummaries, type PlayerSummary } from '../steam/players';
@@ -17,13 +18,16 @@ export interface CompareDeps {
   now: () => number;
 }
 
+function hiddenPlaytime(games: Map<number, LibIndexEntry>): boolean {
+  return detectPlaytimeHidden([...games].map(([id, entry]) => fromIndexEntry(id, entry)));
+}
+
 async function defaultRequesterLibrary(steamId: string): Promise<GroupLibrary> {
   const [userDoc, index] = await Promise.all([
     db.doc(paths.user(steamId)).get(),
     readLibIndex(steamId),
   ]);
   const flags = (userDoc.data() as Partial<UserRecord> | undefined)?.flags;
-  const playtimeHidden = flags?.playtimeHidden === true;
   let games: Map<number, LibIndexEntry>;
   if (index.built && index.entries.size > 0) {
     games = index.entries;
@@ -45,6 +49,7 @@ async function defaultRequesterLibrary(steamId: string): Promise<GroupLibrary> {
       games = fetched?.games ?? new Map();
     }
   }
+  const playtimeHidden = flags?.playtimeHidden === true || hiddenPlaytime(games);
   return { steamId, games, playtimeHidden, state: 'ok' };
 }
 
@@ -100,7 +105,7 @@ export async function compareLibrariesService(
     throw new CompareError('unavailable', 'Could not load this friend’s library. Please try again.', 502);
   }
 
-  const targetPlaytimeHidden = await deps.getTargetPlaytimeHidden(targetSteamId);
+  const targetPlaytimeHidden = hiddenPlaytime(targetLib.games) || await deps.getTargetPlaytimeHidden(targetSteamId);
 
   const targetLibrary: GroupLibrary = {
     steamId: targetSteamId,

@@ -63,6 +63,17 @@ function mockDeps(overrides: Partial<CompareDeps> = {}): CompareDeps {
 }
 
 describe('compareLibrariesService', () => {
+  it('detects hidden target playtime from the fetched library when no stored flag exists', async () => {
+    const hidden = new Map<number, LibIndexEntry>(
+      [10, 20, 30, 40, 50].map(id => [id, { n: `G${id}`, i: '', p: 0, w: 0 }] as [number, LibIndexEntry])
+    );
+    const result = await compareLibrariesService(userA, userB, {}, mockDeps({
+      getLibraryFor: async ids => ids.map(id => ({ steamId: id, state: 'ok', source: 'steam', games: hidden, fetchedAt: NOW * 1000 })),
+    }));
+    expect(result.playtimeHidden.them).toBe(true);
+    expect(result.playtimeHidden.me).toBe(false);
+  });
+
   it('rejects invalid target Steam ID', async () => {
     await expect(compareLibrariesService(userA, 'invalid_id')).rejects.toThrow(CompareError);
     await expect(compareLibrariesService(userA, 'invalid_id')).rejects.toThrow('Enter a valid 17-digit Steam ID');
