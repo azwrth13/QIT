@@ -115,10 +115,7 @@ export async function compareLibrariesService(
   };
 
   const now = options.now ?? deps.now();
-  const comparison = compareLibraries(userLibrary, targetLibrary, {
-    now,
-    notRecentlyPlayedDays: options.notRecentlyPlayedDays,
-  });
+  const comparison = compareLibraries(userLibrary, targetLibrary, { now });
 
   const targetSummary = summaries.get(targetSteamId);
   const userSummary = summaries.get(requesterSteamId);
