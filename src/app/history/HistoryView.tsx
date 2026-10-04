@@ -10,6 +10,7 @@ import { getMode, isModeId } from '@/lib/roulette/modes';
 import { renderReasons } from '@/lib/roulette/reasons';
 import type { Card, FilterSelection, Reason, Scope } from '@/lib/roulette/types';
 import { THRESHOLDS } from '@/lib/roulette/thresholds';
+import { buildRerollFilters } from '@/lib/history/reroll-filters';
 
 const ANTI_REPEAT_OPTIONS = THRESHOLDS.antiRepeatDayOptions;
 const DEFAULT_ANTI_REPEAT_DAYS = THRESHOLDS.antiRepeatDays;
@@ -169,11 +170,7 @@ export default function HistoryView() {
         }).catch(() => {});
       }
 
-      // Compose filters incorporating user's current anti-repeat setting
-      const baseFilters = (roll.filters ?? []).filter(f => f.id !== 'exclude-rolled');
-      const filters = antiRepeatDays > 0
-        ? [...baseFilters, { id: 'exclude-rolled', params: { days: antiRepeatDays } }]
-        : baseFilters;
+      const filters = buildRerollFilters(roll.filters, antiRepeatDays);
 
       const spinRes = await fetch('/api/roulette/spin', {
         method: 'POST',
@@ -295,7 +292,7 @@ export default function HistoryView() {
           <div>
             <h2 className="text-xl font-bold">Avoid recent recommendations</h2>
             <p className="text-sm text-gray-700">
-              Prevent games QIT recommended recently from appearing again in roulette (Decision D6).
+              Prevent games QIT recommended recently from appearing again when you re-roll from history (Decision D6).
             </p>
           </div>
           {antiRepeatMessage && (
