@@ -20,7 +20,7 @@ Delivers the **QIT History page with re-roll** package (Feature 13 "Game History
   - **View previous recommendations**: paginated history list (newest first) with empty, loading, error, and partial data states.
   - **Recommendations that became played games view**: dedicated tab filtering recommendations that have been played.
   - **Mark as played action**: manual confirmation button ("Mark as played") for unplayed recommendations, calling `PATCH /api/history { rollId, action: 'played' }`.
-  - **Re-roll from old sessions**: re-rolls using the stored mode, filters, and scope of an earlier recommendation, incorporating the active anti-repeat setting.
+  - **Re-roll from old sessions**: re-rolls using the stored mode, filters, and scope of an earlier recommendation, keeping any stored `exclude-rolled` filter and adding the active anti-repeat setting only when the stored session had none and the setting is on.
   - **Avoid recent recommendations setting (Decision D6)**: user-configurable anti-repeat window with options Off (0), 7 days, 30 days (default), and 90 days, saved per user in Firestore.
 
 ### Feature 19: Result Card Enrichment
@@ -68,3 +68,4 @@ Delivers the **QIT History page with re-roll** package (Feature 13 "Game History
 - Unshipped surfaces (e.g. `/friend-night`, `/lobby`) remain hidden behind `isNavEnabled` checks.
 - Auth routes, short-link files, `next.config.ts`, `firebase.json`, `apphosting.yaml`, and `README.md` remain untouched.
 - Anti-repeat settings are stored under the user's `prefs` subcollection, keeping isolation from other user data.
+- The anti-repeat preference (D6) is applied only to re-rolls from `/history`. Applying it at the shared spin boundary so every roulette caller honors it is a follow-up.

@@ -8,6 +8,7 @@ import HistoryPage from '../src/app/history/page';
 import HistoryView, { type RollItem } from '../src/app/history/HistoryView';
 import { isNavEnabled, navbarItems, NAV_ITEMS } from '../src/app/navbar/nav-items';
 import type { Card } from '../src/lib/roulette/types';
+import { buildRerollFilters } from '../src/lib/history/reroll-filters';
 import { ExcludableResultCard } from '../src/components/result-card/ExcludableResultCard';
 
 const steamId = '76561198000000042';
@@ -129,6 +130,16 @@ describe('History Page & View', () => {
       const html = renderToStaticMarkup(<HistoryView />);
       // Initial SSR render shows loading or items
       expect(html).toBeDefined();
+    });
+
+    it('builds re-roll filters from stored filters and the anti-repeat setting', () => {
+      const stored = [{ id: 'never-played' }];
+      expect(buildRerollFilters(stored, 0)).toEqual(stored);
+      expect(buildRerollFilters(undefined, 0)).toEqual([]);
+      expect(buildRerollFilters(stored, 30)).toEqual([...stored, { id: 'exclude-rolled', params: { days: 30 } }]);
+      const withStored = [{ id: 'exclude-rolled', params: { days: 7 } }];
+      expect(buildRerollFilters(withStored, 0)).toEqual(withStored);
+      expect(buildRerollFilters(withStored, 90)).toEqual(withStored);
     });
 
     it('renders active re-roll card with ExcludableResultCard', () => {
