@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/lib/auth', () => ({ getSteamId: vi.fn() }));
 vi.mock('../src/lib/social/libraries', () => ({ getLibraryFor: vi.fn() }));
 vi.mock('../src/lib/roulette/service', () => ({ DEFAULT_DEPS: {}, SOURCED_FAMILIES: new Set(['library', 'store', 'live', 'history', 'group']) }));
+vi.mock('../src/lib/roulette/reasons', async importOriginal => {
+  const actual = await importOriginal<typeof import('../src/lib/roulette/reasons')>();
+  return { ...actual, orderReasons: vi.fn(actual.orderReasons) };
+});
 import { getSteamId } from '../src/lib/auth';
+import { orderReasons } from '../src/lib/roulette/reasons';
 import { getLibraryFor } from '../src/lib/social/libraries';
 import { POST } from '../src/app/api/friend-night/route';
 import { friendNight } from '../src/lib/friend-night/service';
@@ -56,8 +61,11 @@ describe('Friend Night discovery and pipeline', () => {
     withStore.signals.store = { type: 'game', flags: { multiplayer: true } } as Candidate['signals']['store'];
     const parsed = parseSpinRequest({ mode: 'alive-and-kicking', scope: { kind: 'friends', with: [friend] } }, 'spin', new Set(['library', 'store', 'group', 'history', 'live']));
     if (!parsed.ok) throw new Error(parsed.error);
+    vi.mocked(orderReasons).mockClear();
     const result = await friendNight(self, parsed.request, 'spin', 'any', 10, dependencies([withStore]));
-    expect(result.card?.reasons.map(r => r.code).filter(code => code === 'active_now')).toEqual(['active_now']);
+    const raw = vi.mocked(orderReasons).mock.calls.flatMap(([reasons]) => reasons.map(r => r.code));
+    expect(raw.filter(code => code === 'active_now')).toEqual(['active_now']);
+    expect(result.card?.reasons.map(r => r.code)).toContain('active_now');
   });
   it('returns an empty pool for unavailable or nonmatching groups without recording a roll', async () => {
     const deps = dependencies([], [{ steamId: friend, state: 'private' }]);
