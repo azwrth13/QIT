@@ -335,7 +335,7 @@ export default function HistoryView() {
             }`}
             aria-selected={activeTab === 'all'}
           >
-            All recommendations ({rolls.length})
+            All recommendations ({rolls.length} loaded)
           </button>
           <button
             role="tab"
@@ -347,7 +347,7 @@ export default function HistoryView() {
             }`}
             aria-selected={activeTab === 'played'}
           >
-            Played games ({playedRolls.length})
+            Played games ({playedRolls.length} loaded)
           </button>
         </div>
       </div>
